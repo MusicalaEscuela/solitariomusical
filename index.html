@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+  />
+  <title>Solitario Musical Cromático | Musicala</title>
+  <meta
+    name="description"
+    content="Minijuego Solitario Musical Cromático de Musicala. Organiza las cartas, construye las fundaciones desde Do hasta Do agudo y completa la armonía."
+  />
+  <meta name="theme-color" content="#f7f1e8" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Space+Mono:wght@400;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Ajusta la ruta si el logo queda en otra carpeta -->
+  <link rel="icon" href="assets/logo.png" />
+  <link rel="apple-touch-icon" href="assets/logo.png" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="main-header" aria-label="Encabezado del juego">
+      <div class="brand-wrap">
+        <img
+          src="assets/logo.png"
+          alt="Logo de Musicala"
+          class="brand-logo"
+          onerror="this.style.display='none'"
+        />
+
+        <div class="brand-copy">
+          <p class="brand-kicker">Musicala presenta</p>
+          <h1>♬ Solitario Musical Cromático</h1>
+        </div>
+      </div>
+
+      <div class="hdr-right" aria-label="Panel del juego">
+        <div class="score-box" aria-live="polite" aria-label="Puntuación actual">
+          <span class="lbl">pts</span>
+          <span id="puntos">0</span>
+        </div>
+
+        <button
+          id="nueva-btn"
+          type="button"
+          aria-label="Iniciar una nueva partida"
+          title="Iniciar una nueva partida"
+        >
+          Nueva partida
+        </button>
+      </div>
+    </header>
+
+    <main aria-label="Área principal del juego">
+      <section
+        class="game-intro"
+        aria-label="Descripción breve del juego"
+        style="margin-bottom: 10px;"
+      >
+        <p
+          style="
+            font-size: 11px;
+            line-height: 1.5;
+            color: #8c7b9f;
+            background: rgba(255,255,255,0.62);
+            border: 1px solid rgba(140,82,255,0.10);
+            border-radius: 14px;
+            padding: 10px 12px;
+          "
+        >
+          Construye cada fundación desde <strong>Do</strong> hasta <strong>Do↑</strong>,
+          alternando tipos en el tablero y ordenando las notas en secuencia cromática.
+        </p>
+      </section>
+
+      <!-- Fila superior: mazo | descarte | [espacio] | fundaciones ×4 -->
+      <section id="top-row" aria-label="Zona superior del juego">
+        <div
+          id="mazo"
+          class="zone"
+          role="button"
+          tabindex="0"
+          aria-label="Mazo"
+          title="Toca para robar una carta"
+        ></div>
+
+        <div
+          id="descarte"
+          class="zone"
+          role="button"
+          tabindex="0"
+          aria-label="Descarte"
+          title="Carta actual del descarte"
+        ></div>
+
+        <div class="gsp" aria-hidden="true"></div>
+
+        <div
+          class="funda zone"
+          data-fi="0"
+          role="button"
+          tabindex="0"
+          aria-label="Fundación 1"
+          title="Fundación 1"
+        ></div>
+        <div
+          class="funda zone"
+          data-fi="1"
+          role="button"
+          tabindex="0"
+          aria-label="Fundación 2"
+          title="Fundación 2"
+        ></div>
+        <div
+          class="funda zone"
+          data-fi="2"
+          role="button"
+          tabindex="0"
+          aria-label="Fundación 3"
+          title="Fundación 3"
+        ></div>
+        <div
+          class="funda zone"
+          data-fi="3"
+          role="button"
+          tabindex="0"
+          aria-label="Fundación 4"
+          title="Fundación 4"
+        ></div>
+      </section>
+
+      <!-- Tablero: 7 columnas -->
+      <section id="tablero-area" aria-label="Tablero de siete columnas">
+        <div class="col" data-col="0" aria-label="Columna 1"></div>
+        <div class="col" data-col="1" aria-label="Columna 2"></div>
+        <div class="col" data-col="2" aria-label="Columna 3"></div>
+        <div class="col" data-col="3" aria-label="Columna 4"></div>
+        <div class="col" data-col="4" aria-label="Columna 5"></div>
+        <div class="col" data-col="5" aria-label="Columna 6"></div>
+        <div class="col" data-col="6" aria-label="Columna 7"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Overlay de victoria -->
+  <div
+    id="win"
+    class="oculto"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="win-title"
+  >
+    <div id="win-panel">
+      <div class="win-brand">
+        <img
+          src="assets/logo.png"
+          alt="Logo de Musicala"
+          class="win-logo"
+          onerror="this.style.display='none'"
+        />
+      </div>
+
+      <div class="win-notas" aria-hidden="true">♩ ♪ ♫ ♬</div>
+
+      <h2 id="win-title">¡Armonía completa!</h2>
+
+      <p class="win-msg">
+        Completaste las cuatro fundaciones cromáticas de Musicala.
+      </p>
+
+      <p class="win-pts">
+        Puntuación: <strong id="pts-finales">0</strong>
+      </p>
+
+      <button id="play-again-btn" type="button" aria-label="Volver a jugar">
+        Volver a jugar
+      </button>
+    </div>
+  </div>
+
+  <noscript>
+    <p style="padding: 16px; text-align: center;">
+      Este juego necesita JavaScript para funcionar.
+    </p>
+  </noscript>
+
+  <script src="game.js"></script>
+</body>
+</html>
