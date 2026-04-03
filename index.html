@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    content="width=device-width, initial-scale=1.0"
   />
   <title>Solitario Musical Cromático | Musicala</title>
   <meta
     name="description"
-    content="Minijuego Solitario Musical Cromático de Musicala. Organiza las cartas, construye las fundaciones desde Do hasta Do agudo y completa la armonía."
+    content="Minijuego Solitario Musical Cromático de Musicala. Organiza las cartas, construye las fundaciones desde Do hasta Do↑ y completa la armonía."
   />
-  <meta name="theme-color" content="#f7f1e8" />
+  <meta name="theme-color" content="#8c52ff" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -20,7 +20,6 @@
     rel="stylesheet"
   />
 
-  <!-- Ajusta la ruta si el logo queda en otra carpeta -->
   <link rel="icon" href="assets/logo.png" />
   <link rel="apple-touch-icon" href="assets/logo.png" />
 
@@ -28,7 +27,7 @@
 </head>
 <body>
   <div id="app">
-    <header class="main-header" aria-label="Encabezado del juego">
+    <header class="main-header" aria-label="Encabezado principal del juego">
       <div class="brand-wrap">
         <img
           src="assets/logo.png"
@@ -38,20 +37,29 @@
         />
 
         <div class="brand-copy">
-          <p class="brand-kicker">Musicala presenta</p>
-          <h1>♬ Solitario Musical Cromático</h1>
+          <p class="brand-kicker">Musicala Game Lab</p>
+          <h1>Solitario Musical Cromático</h1>
+          <p class="brand-subtitle">
+            Un Klondike con notas, instrumentos y un poquito de dignidad visual.
+          </p>
         </div>
       </div>
 
-      <div class="hdr-right" aria-label="Panel del juego">
-        <div class="score-box" aria-live="polite" aria-label="Puntuación actual">
-          <span class="lbl">pts</span>
-          <span id="puntos">0</span>
-        </div>
+      <div class="action-group" aria-label="Acciones del juego">
+        <button
+          id="reset-stats-btn"
+          type="button"
+          class="action-btn secondary"
+          aria-label="Reiniciar historial guardado"
+          title="Borrar puntajes y estadísticas guardadas"
+        >
+          Reiniciar historial
+        </button>
 
         <button
           id="nueva-btn"
           type="button"
+          class="action-btn primary"
           aria-label="Iniciar una nueva partida"
           title="Iniciar una nueva partida"
         >
@@ -60,29 +68,64 @@
       </div>
     </header>
 
-    <main aria-label="Área principal del juego">
-      <section
-        class="game-intro"
-        aria-label="Descripción breve del juego"
-        style="margin-bottom: 10px;"
-      >
-        <p
-          style="
-            font-size: 11px;
-            line-height: 1.5;
-            color: #8c7b9f;
-            background: rgba(255,255,255,0.62);
-            border: 1px solid rgba(140,82,255,0.10);
-            border-radius: 14px;
-            padding: 10px 12px;
-          "
-        >
+    <section class="hud-grid" aria-label="Estadísticas del juego">
+      <article class="hud-card">
+        <span class="hud-label">Puntaje</span>
+        <strong id="puntos" class="hud-value">0</strong>
+        <small class="hud-hint">Partida actual</small>
+      </article>
+
+      <article class="hud-card">
+        <span class="hud-label">Récord</span>
+        <strong id="mejor-puntaje" class="hud-value">0</strong>
+        <small class="hud-hint">Guardado localmente</small>
+      </article>
+
+      <article class="hud-card">
+        <span class="hud-label">Victorias</span>
+        <strong id="partidas-ganadas" class="hud-value">0</strong>
+        <small class="hud-hint">Acumuladas</small>
+      </article>
+
+      <article class="hud-card">
+        <span class="hud-label">Racha</span>
+        <strong id="racha-actual" class="hud-value">0</strong>
+        <small class="hud-hint">Victorias seguidas</small>
+      </article>
+
+      <article class="hud-card">
+        <span class="hud-label">Movimientos</span>
+        <strong id="movimientos" class="hud-value">0</strong>
+        <small class="hud-hint">Solo acciones válidas</small>
+      </article>
+
+      <article class="hud-card">
+        <span class="hud-label">Tiempo</span>
+        <strong id="tiempo" class="hud-value">00:00</strong>
+        <small class="hud-hint">Partida actual</small>
+      </article>
+    </section>
+
+    <section class="meta-strip" aria-label="Resumen histórico">
+      <p>
+        Mejor tiempo:
+        <strong id="mejor-tiempo">--:--</strong>
+      </p>
+      <p>
+        Partidas jugadas:
+        <strong id="partidas-jugadas">0</strong>
+      </p>
+    </section>
+
+    <main class="game-shell" aria-label="Área principal del juego">
+      <section class="game-intro" aria-label="Descripción breve del juego">
+        <p>
           Construye cada fundación desde <strong>Do</strong> hasta <strong>Do↑</strong>,
-          alternando tipos en el tablero y ordenando las notas en secuencia cromática.
+          alterna grupos <strong>oscuros</strong> y <strong>claros</strong> en el tablero,
+          y organiza toda la secuencia cromática sin que el caos humano gane otra vez.
         </p>
       </section>
 
-      <!-- Fila superior: mazo | descarte | [espacio] | fundaciones ×4 -->
       <section id="top-row" aria-label="Zona superior del juego">
         <div
           id="mazo"
@@ -138,7 +181,6 @@
         ></div>
       </section>
 
-      <!-- Tablero: 7 columnas -->
       <section id="tablero-area" aria-label="Tablero de siete columnas">
         <div class="col" data-col="0" aria-label="Columna 1"></div>
         <div class="col" data-col="1" aria-label="Columna 2"></div>
@@ -149,9 +191,14 @@
         <div class="col" data-col="6" aria-label="Columna 7"></div>
       </section>
     </main>
+
+    <footer class="game-footer" aria-label="Pie del juego">
+      <p>
+        Musicala · Solitario experimental con notas cromáticas, persistencia local y más personalidad.
+      </p>
+    </footer>
   </div>
 
-  <!-- Overlay de victoria -->
   <div
     id="win"
     class="oculto"
@@ -177,18 +224,36 @@
         Completaste las cuatro fundaciones cromáticas de Musicala.
       </p>
 
-      <p class="win-pts">
-        Puntuación: <strong id="pts-finales">0</strong>
-      </p>
+      <div class="win-stats" aria-label="Resumen de la victoria">
+        <div class="win-stat">
+          <span>Puntaje</span>
+          <strong id="pts-finales">0</strong>
+        </div>
+        <div class="win-stat">
+          <span>Tiempo</span>
+          <strong id="tiempo-final">00:00</strong>
+        </div>
+        <div class="win-stat">
+          <span>Victorias</span>
+          <strong id="victorias-total">0</strong>
+        </div>
+      </div>
 
-      <button id="play-again-btn" type="button" aria-label="Volver a jugar">
+      <button
+        id="play-again-btn"
+        type="button"
+        class="action-btn primary"
+        aria-label="Volver a jugar"
+      >
         Volver a jugar
       </button>
     </div>
   </div>
 
+  <div id="toast" aria-live="polite" aria-atomic="true"></div>
+
   <noscript>
-    <p style="padding: 16px; text-align: center;">
+    <p class="no-js">
       Este juego necesita JavaScript para funcionar.
     </p>
   </noscript>
