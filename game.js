@@ -1,21 +1,5 @@
 'use strict';
 
-/* ════════════════════════════════════════════════════════════
-   SOLITARIO MUSICAL CROMÁTICO — game.js
-   Musicala edition
-   Ajustes:
-   - Mantiene la lógica actual del juego
-   - Compacta el tablero sin cambiar la estructura
-   - Controla mejor el tamaño de cartas en desktop y móvil
-   - Centra top-row y tablero con ancho máximo dinámico
-   - Reduce scroll vertical ajustando offsets de columnas
-   - Resize más estable con ResizeObserver + rAF
-   ════════════════════════════════════════════════════════════ */
-
-/* ────────────────────────────────────────────────────────────
-   CONSTANTES
-──────────────────────────────────────────────────────────── */
-
 const NOTAS = [
   'Do', 'Do♯', 'Re', 'Re♯', 'Mi', 'Fa', 'Fa♯',
   'Sol', 'Sol♯', 'La', 'La♯', 'Si', 'Do↑'
@@ -33,18 +17,20 @@ const PUNTAJES = {
   VOLTEAR: 5,
   MOVER_TABLERO: 5,
   MOVER_FUNDA: 10,
+  DEVOLVER_FUNDA: 5,
   RECICLAR: 15
 };
 
 const MENSAJES = {
-  SOLO_UNA_A_FUNDA: 'Solo una carta a la vez en la armonía final',
-  MOV_INVALIDO: 'Ese movimiento no encaja',
-  SOLO_MAXIMA_VACIA: 'Solo Do↑ abre una columna vacía',
-  RECICLADO: 'Se recicló el descarte',
-  STATS_REINICIADAS: 'Historial reiniciado en este dispositivo'
+  SOLO_UNA_A_FUNDA: 'Solo una carta a la vez puede subir a la fundación.',
+  MOV_INVALIDO: 'Ese movimiento no encaja.',
+  SOLO_MAXIMA_VACIA: 'Solo Do↑ abre una columna vacía.',
+  RECICLADO: 'El descarte volvió al mazo.',
+  STATS_REINICIADAS: 'Historial reiniciado en este dispositivo.',
+  AYUDA: 'Arrastra cartas o tócalas. También puedes bajar la carta superior de una fundación al tablero.'
 };
 
-const STORAGE_KEY = 'musicala_solitario_stats_v4';
+const STORAGE_KEY = 'musicala_solitario_stats_v5';
 
 const DEFAULT_STATS = {
   bestScore: 0,
@@ -61,19 +47,17 @@ const LAYOUT = {
   MIN_CARD_WIDTH: 52,
   MAX_CARD_WIDTH: 136,
   MIN_CARD_HEIGHT: 76,
-  MAX_CARD_HEIGHT: 186,
+  MAX_CARD_HEIGHT: 188,
   CARD_RATIO: 1.42,
   MIN_GAP: 4,
   MAX_GAP: 10,
   MIN_FACE_OFFSET: 18,
-  MAX_FACE_OFFSET: 34,
+  MAX_FACE_OFFSET: 36,
   MIN_BACK_OFFSET: 12,
   MAX_BACK_OFFSET: 22
 };
 
-/* ────────────────────────────────────────────────────────────
-   ESTADO DEL JUEGO
-──────────────────────────────────────────────────────────── */
+const DRAG_THRESHOLD = 8;
 
 let mazo = [];
 let descarte = [];
@@ -94,14 +78,12 @@ let resizeObserver = null;
 
 let stats = cargarEstadisticas();
 
-// Dimensiones dinámicas
 let CH = 76;
 let OD = 14;
 let OU = 24;
 
-/* ────────────────────────────────────────────────────────────
-   HELPERS DOM
-──────────────────────────────────────────────────────────── */
+let dragState = null;
+let dragClickSuppressUntil = 0;
 
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -117,10 +99,6 @@ function setText(id, value) {
   const el = getEl(id);
   if (el) el.textContent = value;
 }
-
-/* ────────────────────────────────────────────────────────────
-   HELPERS GENERALES
-──────────────────────────────────────────────────────────── */
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -179,7 +157,6 @@ function sumarPuntos(valor) {
 
 function registrarInicioPartida() {
   if (partidaRegistrada) return;
-
   partidaRegistrada = true;
   stats.gamesPlayed += 1;
   persistirEstadisticas();
@@ -204,13 +181,8 @@ function actualizarHud() {
     stats.bestTimeSeconds == null ? '--:--' : formatearTiempo(stats.bestTimeSeconds)
   );
   setText('partidas-jugadas', formatearNumero(stats.gamesPlayed));
-
   actualizarOverlayVictoria();
 }
-
-/* ────────────────────────────────────────────────────────────
-   STORAGE
-──────────────────────────────────────────────────────────── */
 
 function normalizarStats(rawStats) {
   const safe = { ...DEFAULT_STATS, ...(rawStats || {}) };
@@ -243,7 +215,7 @@ function persistirEstadisticas() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
   } catch {
-    // Si el navegador bloquea storage, seguimos tranquilos.
+    // Sin storage disponible, seguimos sin bloquear el juego.
   }
 }
 
@@ -253,10 +225,6 @@ function resetearEstadisticas() {
   actualizarHud();
   toast(MENSAJES.STATS_REINICIADAS);
 }
-
-/* ────────────────────────────────────────────────────────────
-   RELOJ
-──────────────────────────────────────────────────────────── */
 
 function iniciarReloj() {
   detenerReloj();
@@ -269,22 +237,9 @@ function iniciarReloj() {
 }
 
 function detenerReloj() {
-  if (relojTimer) {
-    window.clearInterval(relojTimer);
-    relojTimer = null;
-  }
-}
-
-/* ────────────────────────────────────────────────────────────
-   CLASES / SELECCIÓN
-──────────────────────────────────────────────────────────── */
-
-function haySeleccionEnCarta(col, idx) {
-  return (
-    sel?.zona === 'tablero' &&
-    sel.col === col &&
-    sel.idx <= idx
-  );
+  if (!relojTimer) return;
+  window.clearInterval(relojTimer);
+  relojTimer = null;
 }
 
 function getGrupoClasePorPalo(paloIndex) {
@@ -298,7 +253,8 @@ function limpiarClasesFunda(el) {
     'funda-teclas',
     'funda-percusion',
     'funda-cuerdas',
-    'funda-vientos'
+    'funda-vientos',
+    'drop-target'
   );
 }
 
@@ -307,10 +263,6 @@ function aplicarClasesFunda(el, fi) {
   limpiarClasesFunda(el);
   el.classList.add(getGrupoClasePorPalo(fi), palo.clase);
 }
-
-/* ────────────────────────────────────────────────────────────
-   DIMENSIONES RESPONSIVAS
-──────────────────────────────────────────────────────────── */
 
 function obtenerContenedorJuego() {
   const tableroEl = getEl('tablero-area');
@@ -321,7 +273,7 @@ function obtenerAnchoDisponibleJuego() {
   const contenedor = obtenerContenedorJuego();
   const rect = contenedor.getBoundingClientRect();
   const width = Math.floor(rect.width || contenedor.clientWidth || (window.innerWidth - 16));
-  return Math.max(LAYOUT.MIN_BOARD_WIDTH, width);
+  return Math.max(LAYOUT.MIN_BOARD_WIDTH, width - 4);
 }
 
 function aplicarAnchoControladoTablero(boardWidth) {
@@ -339,11 +291,8 @@ function aplicarAnchoControladoTablero(boardWidth) {
 function calcDims() {
   const availableWidth = obtenerAnchoDisponibleJuego();
   const viewportHeight = getViewportHeight();
-
-  // Gap pequeño y controlado para que no se desperdicie ancho.
   const gap = clamp(Math.floor(availableWidth * 0.0065), LAYOUT.MIN_GAP, LAYOUT.MAX_GAP);
 
-  // El tablero usa el ancho disponible, pero no deja crecer las columnas sin control.
   const desiredCardWidth = clamp(
     Math.floor((availableWidth - 6 * gap) / 7),
     LAYOUT.MIN_CARD_WIDTH,
@@ -352,7 +301,6 @@ function calcDims() {
 
   const targetBoardWidth = (desiredCardWidth * 7) + (gap * 6);
   const actualBoardWidth = Math.min(availableWidth, targetBoardWidth);
-
   aplicarAnchoControladoTablero(actualBoardWidth);
 
   const cardWidth = Math.max(
@@ -360,16 +308,13 @@ function calcDims() {
     Math.floor((actualBoardWidth - 6 * gap) / 7)
   );
 
-  // La altura también se limita por viewport para evitar scroll absurdo.
   const maxHeightByViewport = clamp(
     Math.floor(viewportHeight * 0.24),
     130,
     LAYOUT.MAX_CARD_HEIGHT
   );
 
-  const baseHeight = Math.floor(cardWidth * LAYOUT.CARD_RATIO);
-
-  CH = clamp(baseHeight, LAYOUT.MIN_CARD_HEIGHT, maxHeightByViewport);
+  CH = clamp(Math.floor(cardWidth * LAYOUT.CARD_RATIO), LAYOUT.MIN_CARD_HEIGHT, maxHeightByViewport);
   OD = clamp(Math.floor(CH * 0.16), LAYOUT.MIN_BACK_OFFSET, LAYOUT.MAX_BACK_OFFSET);
   OU = clamp(Math.floor(CH * 0.27), LAYOUT.MIN_FACE_OFFSET, LAYOUT.MAX_FACE_OFFSET);
 
@@ -400,9 +345,7 @@ function initLayoutObservers() {
 
   if (typeof ResizeObserver === 'undefined') return;
 
-  if (resizeObserver) {
-    resizeObserver.disconnect();
-  }
+  if (resizeObserver) resizeObserver.disconnect();
 
   resizeObserver = new ResizeObserver(() => {
     programarRecalculoLayout();
@@ -410,14 +353,9 @@ function initLayoutObservers() {
 
   if (tableroEl) resizeObserver.observe(tableroEl);
   if (shellEl) resizeObserver.observe(shellEl);
-
   const appEl = getEl('app');
   if (appEl) resizeObserver.observe(appEl);
 }
-
-/* ────────────────────────────────────────────────────────────
-   BARAJA
-──────────────────────────────────────────────────────────── */
 
 function crearBaraja() {
   const baraja = [];
@@ -430,23 +368,16 @@ function crearBaraja() {
 }
 
 function mezclar(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
+  for (let i = arr.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
 }
 
-/* ────────────────────────────────────────────────────────────
-   NUEVA PARTIDA
-──────────────────────────────────────────────────────────── */
-
-function cerrarVictoria() {
-  const win = getEl('win');
-  if (win) win.classList.add('oculto');
-}
-
 function nuevaPartida() {
+  cancelarArrastre();
+
   if (partidaRegistrada && !partidaGanada && movimientos > 0) {
     stats.currentStreak = 0;
     persistirEstadisticas();
@@ -466,9 +397,8 @@ function nuevaPartida() {
   partidaGanada = false;
 
   let i = 0;
-
-  for (let c = 0; c < 7; c++) {
-    for (let r = 0; r <= c; r++) {
+  for (let c = 0; c < 7; c += 1) {
+    for (let r = 0; r <= c; r += 1) {
       b[i].up = (r === c);
       tablero[c].push(b[i]);
       i += 1;
@@ -480,24 +410,18 @@ function nuevaPartida() {
     i += 1;
   }
 
-  cerrarVictoria();
+  const win = getEl('win');
+  if (win) win.classList.add('oculto');
+
   iniciarReloj();
-  calcDims();
-  actualizarHud();
   renderizar();
 }
-
-/* ────────────────────────────────────────────────────────────
-   REGLAS
-──────────────────────────────────────────────────────────── */
 
 function puedeEnFunda(carta, fi) {
   const funda = fundas[fi];
   if (!funda) return false;
 
-  if (funda.length === 0) {
-    return carta.n === 0;
-  }
+  if (funda.length === 0) return carta.n === 0;
 
   const tope = funda[funda.length - 1];
   return carta.p === tope.p && carta.n === tope.n + 1;
@@ -507,9 +431,7 @@ function puedeEnTablero(carta, col) {
   const pila = tablero[col];
   if (!pila) return false;
 
-  if (pila.length === 0) {
-    return carta.n === 12;
-  }
+  if (pila.length === 0) return carta.n === 12;
 
   const tope = pila[pila.length - 1];
   return (
@@ -526,29 +448,69 @@ function voltearTope(pila) {
   }
 }
 
-/* ────────────────────────────────────────────────────────────
-   SELECCIÓN
-──────────────────────────────────────────────────────────── */
+function origenActivo() {
+  return dragState?.origin || sel;
+}
 
-function cartasSel() {
-  if (!sel) return null;
+function haySeleccionEnCarta(col, idx) {
+  const origen = origenActivo();
+  return origen?.zona === 'tablero' && origen.col === col && origen.idx <= idx;
+}
 
-  if (sel.zona === 'descarte') {
+function haySeleccionEnFunda(fi) {
+  const origen = origenActivo();
+  return origen?.zona === 'funda' && origen.fi === fi;
+}
+
+function haySeleccionEnDescarte() {
+  const origen = origenActivo();
+  return origen?.zona === 'descarte';
+}
+
+function cartasDeOrigen(origen) {
+  if (!origen) return null;
+
+  if (origen.zona === 'descarte') {
     return descarte.length ? [descarte[descarte.length - 1]] : null;
   }
 
-  if (sel.zona === 'tablero') {
-    const pila = tablero[sel.col];
-    if (!pila || sel.idx < 0 || sel.idx >= pila.length) return null;
-    return pila.slice(sel.idx);
+  if (origen.zona === 'tablero') {
+    const pila = tablero[origen.col];
+    if (!pila || origen.idx < 0 || origen.idx >= pila.length) return null;
+    return pila.slice(origen.idx);
+  }
+
+  if (origen.zona === 'funda') {
+    const pila = fundas[origen.fi];
+    return pila && pila.length ? [pila[pila.length - 1]] : null;
   }
 
   return null;
 }
 
-/* ────────────────────────────────────────────────────────────
-   TOAST
-──────────────────────────────────────────────────────────── */
+function cartasSel() {
+  return cartasDeOrigen(sel);
+}
+
+function extraerCartasDesdeOrigen(origen) {
+  if (origen.zona === 'descarte') {
+    return descarte.length ? [descarte.pop()] : [];
+  }
+
+  if (origen.zona === 'tablero') {
+    const pila = tablero[origen.col];
+    const cartas = pila.splice(origen.idx);
+    voltearTope(pila);
+    return cartas;
+  }
+
+  if (origen.zona === 'funda') {
+    const pila = fundas[origen.fi];
+    return pila.length ? [pila.pop()] : [];
+  }
+
+  return [];
+}
 
 function asegurarToast() {
   let t = getEl('toast');
@@ -570,12 +532,8 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     t.classList.remove('visible');
-  }, msg.length > 28 ? 2200 : 1600);
+  }, msg.length > 42 ? 2600 : 1800);
 }
-
-/* ────────────────────────────────────────────────────────────
-   ACCIONES DEL JUEGO
-──────────────────────────────────────────────────────────── */
 
 function onClickMazo() {
   limpiarSeleccion();
@@ -604,9 +562,9 @@ function onClickMazo() {
 }
 
 function onClickDescarte() {
-  if (descarte.length === 0) return;
+  if (!descarte.length) return;
 
-  if (sel?.zona === 'descarte') {
+  if (haySeleccionEnDescarte()) {
     limpiarSeleccion();
     renderizar();
     return;
@@ -614,49 +572,83 @@ function onClickDescarte() {
 
   if (sel) {
     limpiarSeleccion();
-    renderizar();
-    return;
   }
 
   sel = { zona: 'descarte' };
   renderizar();
 }
 
-function onClickFunda(fi) {
-  if (!sel) return;
+function moverDesdeOrigenATablero(origen, col, opts = {}) {
+  const cartas = cartasDeOrigen(origen);
+  if (!cartas || !puedeEnTablero(cartas[0], col)) {
+    if (!opts.silencioso) toast(tablero[col].length === 0 ? MENSAJES.SOLO_MAXIMA_VACIA : MENSAJES.MOV_INVALIDO);
+    return false;
+  }
 
-  const cartas = cartasSel();
+  if (origen.zona === 'tablero' && origen.col === col) return false;
+
+  registrarMovimiento();
+  const movidas = extraerCartasDesdeOrigen(origen);
+  tablero[col].push(...movidas);
+
+  if (origen.zona === 'funda') {
+    sumarPuntos(PUNTAJES.DEVOLVER_FUNDA);
+  } else {
+    sumarPuntos(PUNTAJES.MOVER_TABLERO);
+  }
+
+  return true;
+}
+
+function moverDesdeOrigenAFunda(origen, fi, opts = {}) {
+  const cartas = cartasDeOrigen(origen);
 
   if (!cartas || cartas.length !== 1) {
-    toast(MENSAJES.SOLO_UNA_A_FUNDA);
-    limpiarSeleccion();
-    renderizar();
-    return;
+    if (!opts.silencioso) toast(MENSAJES.SOLO_UNA_A_FUNDA);
+    return false;
   }
 
   const carta = cartas[0];
-
   if (!puedeEnFunda(carta, fi)) {
-    toast(MENSAJES.MOV_INVALIDO);
+    if (!opts.silencioso) toast(MENSAJES.MOV_INVALIDO);
+    return false;
+  }
+
+  registrarMovimiento();
+  const movidas = extraerCartasDesdeOrigen(origen);
+  fundas[fi].push(movidas[0]);
+  sumarPuntos(PUNTAJES.MOVER_FUNDA);
+  verificarVictoria();
+  return true;
+}
+
+function onClickFunda(fi) {
+  const pila = fundas[fi];
+
+  if (!sel) {
+    if (!pila.length) return;
+    sel = { zona: 'funda', fi };
+    renderizar();
+    return;
+  }
+
+  if (sel.zona === 'funda' && sel.fi === fi) {
     limpiarSeleccion();
     renderizar();
     return;
   }
 
-  registrarMovimiento();
-
-  if (sel.zona === 'descarte') {
-    descarte.pop();
-  } else if (sel.zona === 'tablero') {
-    tablero[sel.col].splice(sel.idx);
-    voltearTope(tablero[sel.col]);
+  if (moverDesdeOrigenAFunda(sel, fi)) {
+    limpiarSeleccion();
+    renderizar();
+    return;
   }
 
-  fundas[fi].push(carta);
-  sumarPuntos(PUNTAJES.MOVER_FUNDA);
-  limpiarSeleccion();
-
-  verificarVictoria();
+  if (pila.length) {
+    sel = { zona: 'funda', fi };
+  } else {
+    limpiarSeleccion();
+  }
   renderizar();
 }
 
@@ -665,7 +657,6 @@ function onClickCarta(col, idx) {
   if (!pila || idx < 0 || idx >= pila.length) return;
 
   const carta = pila[idx];
-
   if (!carta.up) {
     limpiarSeleccion();
     renderizar();
@@ -684,15 +675,11 @@ function onClickCarta(col, idx) {
       return;
     }
 
-    const cartas = cartasSel();
-    if (cartas && puedeEnTablero(cartas[0], col)) {
-      moverATablero(col);
+    if (moverDesdeOrigenATablero(sel, col, { silencioso: true })) {
+      limpiarSeleccion();
+      renderizar();
       return;
     }
-
-    sel = { zona: 'tablero', col, idx };
-    renderizar();
-    return;
   }
 
   sel = { zona: 'tablero', col, idx };
@@ -702,45 +689,15 @@ function onClickCarta(col, idx) {
 function onClickColVacia(col) {
   if (!sel) return;
 
-  const cartas = cartasSel();
-
-  if (cartas && puedeEnTablero(cartas[0], col)) {
-    moverATablero(col);
-    return;
-  }
-
-  if (cartas) toast(MENSAJES.SOLO_MAXIMA_VACIA);
-  limpiarSeleccion();
-  renderizar();
-}
-
-function moverATablero(col) {
-  const cartas = cartasSel();
-
-  if (!cartas || !puedeEnTablero(cartas[0], col)) {
+  if (moverDesdeOrigenATablero(sel, col)) {
     limpiarSeleccion();
     renderizar();
     return;
   }
 
-  registrarMovimiento();
-
-  if (sel.zona === 'descarte') {
-    descarte.pop();
-  } else if (sel.zona === 'tablero') {
-    tablero[sel.col].splice(sel.idx);
-    voltearTope(tablero[sel.col]);
-  }
-
-  tablero[col].push(...cartas);
-  sumarPuntos(PUNTAJES.MOVER_TABLERO);
   limpiarSeleccion();
   renderizar();
 }
-
-/* ────────────────────────────────────────────────────────────
-   VICTORIA
-──────────────────────────────────────────────────────────── */
 
 function verificarVictoria() {
   const gano = fundas.every(funda => funda.length === 13);
@@ -751,7 +708,6 @@ function verificarVictoria() {
   detenerReloj();
 
   const tiempoFinal = getElapsedSeconds();
-
   stats.gamesWon += 1;
   stats.currentStreak += 1;
   stats.bestStreak = Math.max(stats.bestStreak, stats.currentStreak);
@@ -770,10 +726,6 @@ function verificarVictoria() {
     if (win) win.classList.remove('oculto');
   }, 320);
 }
-
-/* ────────────────────────────────────────────────────────────
-   HTML DE CARTAS / SLOTS
-──────────────────────────────────────────────────────────── */
 
 function slotHTML(icono = '') {
   return `
@@ -805,13 +757,14 @@ function backHTML() {
   `;
 }
 
-function faceHTML(carta, isSel = false) {
+function faceHTML(carta, isSel = false, isDraggable = false) {
   const nota = NOTAS[carta.n];
   const palo = PALOS[carta.p];
   const selClass = isSel ? ' sel' : '';
+  const dragClass = isDraggable ? ' is-draggable' : '';
 
   return `
-    <div class="card face ${palo.tipo}${selClass}" aria-label="${nota} ${palo.nombre}">
+    <div class="card face ${palo.tipo}${selClass}${dragClass}" aria-label="${nota} ${palo.nombre}">
       <div class="c-tl">
         <b>${nota}</b>
         <span>${palo.sym}</span>
@@ -825,14 +778,11 @@ function faceHTML(carta, isSel = false) {
   `;
 }
 
-/* ────────────────────────────────────────────────────────────
-   RENDER
-──────────────────────────────────────────────────────────── */
-
 function renderMazo() {
   const mazoEl = getEl('mazo');
   if (!mazoEl) return;
 
+  mazoEl.classList.remove('drop-target');
   mazoEl.innerHTML = mazo.length > 0 ? backHTML() : slotHTML('↺');
   mazoEl.setAttribute(
     'aria-label',
@@ -844,10 +794,10 @@ function renderDescarte() {
   const descarteEl = getEl('descarte');
   if (!descarteEl) return;
 
-  descarteEl.innerHTML =
-    descarte.length > 0
-      ? faceHTML(descarte[descarte.length - 1], sel?.zona === 'descarte')
-      : slotHTML();
+  descarteEl.classList.remove('drop-target');
+  descarteEl.innerHTML = descarte.length
+    ? faceHTML(descarte[descarte.length - 1], haySeleccionEnDescarte(), true)
+    : slotHTML();
 
   const carta = descarte[descarte.length - 1];
   descarteEl.setAttribute(
@@ -857,20 +807,21 @@ function renderDescarte() {
 }
 
 function renderFundas() {
-  for (let fi = 0; fi < 4; fi++) {
+  for (let fi = 0; fi < 4; fi += 1) {
     const el = q(`.funda[data-fi="${fi}"]`);
     if (!el) continue;
 
     aplicarClasesFunda(el, fi);
-
     const pila = fundas[fi];
     const tope = pila[pila.length - 1];
 
-    el.innerHTML = tope ? faceHTML(tope) : fundaVaciaHTML(fi);
+    el.innerHTML = tope
+      ? faceHTML(tope, haySeleccionEnFunda(fi), true)
+      : fundaVaciaHTML(fi);
 
     const texto = tope
       ? `Fundación ${fi + 1}: ${cartaToTexto(tope)}`
-      : `Fundación ${fi + 1} vacía, ${PALOS[fi].nombre}, grupo ${PALOS[fi].tipo}`;
+      : `Fundación ${fi + 1} vacía, ${PALOS[fi].nombre}`;
 
     el.setAttribute('aria-label', texto);
   }
@@ -881,19 +832,17 @@ function calcularAlturaColumna(pila) {
 
   let h = 0;
   pila.forEach((carta, i) => {
-    h += (i < pila.length - 1)
-      ? (carta.up ? OU : OD)
-      : CH;
+    h += i < pila.length - 1 ? (carta.up ? OU : OD) : CH;
   });
-
   return h;
 }
 
 function renderTablero() {
-  for (let col = 0; col < 7; col++) {
+  for (let col = 0; col < 7; col += 1) {
     const cEl = q(`.col[data-col="${col}"]`);
     if (!cEl) continue;
 
+    cEl.classList.remove('drop-target');
     const pila = tablero[col];
 
     if (!pila.length) {
@@ -910,14 +859,14 @@ function renderTablero() {
 
     pila.forEach((carta, idx) => {
       const wrap = document.createElement('div');
-      const seleccionada = haySeleccionEnCarta(col, idx);
-
       wrap.className = 'cwrap';
       wrap.style.top = `${top}px`;
       wrap.style.zIndex = String(idx + 1);
       wrap.dataset.col = String(col);
       wrap.dataset.idx = String(idx);
-      wrap.innerHTML = carta.up ? faceHTML(carta, seleccionada) : backHTML();
+      wrap.innerHTML = carta.up
+        ? faceHTML(carta, haySeleccionEnCarta(col, idx), true)
+        : backHTML();
 
       wrap.setAttribute(
         'aria-label',
@@ -925,17 +874,17 @@ function renderTablero() {
       );
 
       cEl.appendChild(wrap);
-
       if (idx < pila.length - 1) {
         top += carta.up ? OU : OD;
       }
     });
 
-    cEl.setAttribute(
-      'aria-label',
-      `Columna ${col + 1}, ${pila.length} carta${pila.length === 1 ? '' : 's'}`
-    );
+    cEl.setAttribute('aria-label', `Columna ${col + 1}, ${pila.length} cartas`);
   }
+}
+
+function limpiarDestinosDeArrastre() {
+  $$('.drop-target').forEach(el => el.classList.remove('drop-target'));
 }
 
 function renderizar() {
@@ -944,11 +893,201 @@ function renderizar() {
   renderDescarte();
   renderFundas();
   renderTablero();
+  limpiarDestinosDeArrastre();
 }
 
-/* ────────────────────────────────────────────────────────────
-   EVENTOS
-──────────────────────────────────────────────────────────── */
+function getDraggableOriginFromTarget(target) {
+  const discardCard = target.closest('#descarte .card.face');
+  if (discardCard && descarte.length) return { zona: 'descarte' };
+
+  const fundaCard = target.closest('.funda .card.face');
+  if (fundaCard) {
+    const fundaEl = fundaCard.closest('.funda');
+    const fi = Number(fundaEl?.dataset.fi);
+    if (Number.isInteger(fi) && fundas[fi]?.length) return { zona: 'funda', fi };
+  }
+
+  const wrap = target.closest('.cwrap');
+  if (!wrap) return null;
+
+  const col = Number(wrap.dataset.col);
+  const idx = Number(wrap.dataset.idx);
+  const carta = tablero[col]?.[idx];
+  if (!carta?.up) return null;
+  return { zona: 'tablero', col, idx };
+}
+
+function crearGhostArrastre(cartas, pointerX, pointerY) {
+  const layer = document.createElement('div');
+  layer.id = 'drag-layer';
+
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  ghost.style.setProperty('--drag-width', `${Math.max(60, Math.floor(CH / 1.42))}px`);
+
+  const stack = document.createElement('div');
+  stack.className = 'drag-ghost-stack';
+  stack.style.height = `${CH + Math.max(0, cartas.length - 1) * Math.min(OU, 18)}px`;
+
+  cartas.slice(0, 5).forEach((carta, idx) => {
+    const item = document.createElement('div');
+    item.className = 'drag-stack-card';
+    item.style.top = `${idx * Math.min(OU, 18)}px`;
+    item.innerHTML = faceHTML(carta);
+    stack.appendChild(item);
+  });
+
+  ghost.appendChild(stack);
+  layer.appendChild(ghost);
+  document.body.appendChild(layer);
+
+  return {
+    layer,
+    ghost,
+    offsetX: Math.floor((Math.max(60, Math.floor(CH / 1.42))) * 0.45),
+    offsetY: Math.floor(CH * 0.3)
+  };
+}
+
+function moverGhost(pointerX, pointerY) {
+  if (!dragState?.ghost) return;
+  dragState.ghost.style.transform = `translate(${pointerX - dragState.ghostOffsetX}px, ${pointerY - dragState.ghostOffsetY}px)`;
+}
+
+function limpiarGhost() {
+  if (dragState?.layer && dragState.layer.parentNode) {
+    dragState.layer.parentNode.removeChild(dragState.layer);
+  }
+}
+
+function setDropTarget(target) {
+  limpiarDestinosDeArrastre();
+  if (!target) return;
+
+  if (target.zona === 'tablero') {
+    const el = q(`.col[data-col="${target.col}"]`);
+    if (el) el.classList.add('drop-target');
+    return;
+  }
+
+  if (target.zona === 'funda') {
+    const el = q(`.funda[data-fi="${target.fi}"]`);
+    if (el) el.classList.add('drop-target');
+  }
+}
+
+function resolverDestinoDesdePunto(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return null;
+
+  const fundaEl = el.closest('.funda');
+  if (fundaEl) return { zona: 'funda', fi: Number(fundaEl.dataset.fi) };
+
+  const wrap = el.closest('.cwrap');
+  if (wrap) return { zona: 'tablero', col: Number(wrap.dataset.col) };
+
+  const colEl = el.closest('.col');
+  if (colEl) return { zona: 'tablero', col: Number(colEl.dataset.col) };
+
+  return null;
+}
+
+function iniciarArrastre(origin, event) {
+  const cartas = cartasDeOrigen(origin);
+  if (!cartas?.length) return;
+
+  const ghostData = crearGhostArrastre(cartas, event.clientX, event.clientY);
+
+  dragState = {
+    origin,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    dragging: true,
+    layer: ghostData.layer,
+    ghost: ghostData.ghost,
+    ghostOffsetX: ghostData.offsetX,
+    ghostOffsetY: ghostData.offsetY
+  };
+
+  document.body.classList.add('is-dragging');
+  moverGhost(event.clientX, event.clientY);
+  renderizar();
+}
+
+function cancelarArrastre() {
+  limpiarGhost();
+  limpiarDestinosDeArrastre();
+  document.body.classList.remove('is-dragging');
+  dragState = null;
+}
+
+function onPointerDownGlobal(event) {
+  if (event.button !== 0 && event.pointerType !== 'touch') return;
+
+  const origin = getDraggableOriginFromTarget(event.target);
+  if (!origin) return;
+  event.preventDefault();
+
+  dragState = {
+    origin,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    dragging: false
+  };
+}
+
+function onPointerMoveGlobal(event) {
+  if (!dragState || dragState.pointerId !== event.pointerId) return;
+  if (dragState.dragging) event.preventDefault();
+
+  if (!dragState.dragging) {
+    const movedEnough =
+      Math.abs(event.clientX - dragState.startX) > DRAG_THRESHOLD ||
+      Math.abs(event.clientY - dragState.startY) > DRAG_THRESHOLD;
+
+    if (!movedEnough) return;
+    iniciarArrastre(dragState.origin, event);
+  }
+
+  moverGhost(event.clientX, event.clientY);
+  const target = resolverDestinoDesdePunto(event.clientX, event.clientY);
+  setDropTarget(target);
+}
+
+function resolverMovimientoArrastre(origin, target) {
+  if (!target) return false;
+  if (target.zona === 'tablero') return moverDesdeOrigenATablero(origin, target.col, { silencioso: true });
+  if (target.zona === 'funda') return moverDesdeOrigenAFunda(origin, target.fi, { silencioso: true });
+  return false;
+}
+
+function onPointerUpGlobal(event) {
+  if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+  const wasDragging = dragState.dragging;
+  const origin = dragState.origin;
+
+  if (wasDragging) {
+    const target = resolverDestinoDesdePunto(event.clientX, event.clientY);
+    const moved = resolverMovimientoArrastre(origin, target);
+    dragClickSuppressUntil = Date.now() + 250;
+    cancelarArrastre();
+    limpiarSeleccion();
+    renderizar();
+    if (!moved && target) toast(MENSAJES.MOV_INVALIDO);
+    return;
+  }
+
+  dragState = null;
+}
+
+function onPointerCancelGlobal(event) {
+  if (!dragState || dragState.pointerId !== event.pointerId) return;
+  cancelarArrastre();
+  renderizar();
+}
 
 function onKeyActivate(event, callback) {
   const key = event.key;
@@ -965,6 +1104,8 @@ function initEventos() {
   const nuevaBtn = getEl('nueva-btn');
   const playAgainBtn = getEl('play-again-btn');
   const resetStatsBtn = getEl('reset-stats-btn');
+  const reciclarBtn = getEl('reciclar-btn');
+  const ayudaBtn = getEl('ayuda-btn');
 
   mazoEl?.addEventListener('click', onClickMazo);
   mazoEl?.addEventListener('keydown', event => onKeyActivate(event, onClickMazo));
@@ -987,13 +1128,24 @@ function initEventos() {
       return;
     }
 
-    if (col) {
-      onClickColVacia(Number(col.dataset.col));
-    }
+    if (col) onClickColVacia(Number(col.dataset.col));
   });
+
+  document.addEventListener('pointerdown', onPointerDownGlobal);
+  document.addEventListener('pointermove', onPointerMoveGlobal);
+  document.addEventListener('pointerup', onPointerUpGlobal);
+  document.addEventListener('pointercancel', onPointerCancelGlobal);
+  document.addEventListener('click', event => {
+    if (Date.now() >= dragClickSuppressUntil) return;
+    if (!event.target.closest('#app') && !event.target.closest('#win')) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
 
   nuevaBtn?.addEventListener('click', nuevaPartida);
   playAgainBtn?.addEventListener('click', nuevaPartida);
+  reciclarBtn?.addEventListener('click', onClickMazo);
+  ayudaBtn?.addEventListener('click', () => toast(MENSAJES.AYUDA));
 
   resetStatsBtn?.addEventListener('click', () => {
     const confirmado = window.confirm(
@@ -1004,10 +1156,6 @@ function initEventos() {
     resetearEstadisticas();
   });
 }
-
-/* ────────────────────────────────────────────────────────────
-   INICIO
-──────────────────────────────────────────────────────────── */
 
 window.addEventListener('load', () => {
   asegurarToast();

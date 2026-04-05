@@ -2,33 +2,29 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Solitario Musical Cromático | Musicala</title>
   <meta
     name="description"
-    content="Minijuego Solitario Musical Cromático de Musicala. Organiza las cartas, construye las fundaciones desde Do hasta Do↑ y completa la armonía."
+    content="Minijuego Solitario Musical Cromático de Musicala. Organiza las cartas, construye las fundaciones desde Do hasta Do agudo y completa la armonía."
   />
-  <meta name="theme-color" content="#8c52ff" />
+  <meta name="theme-color" content="#0f5b35" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Space+Mono:wght@400;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Space+Mono:wght@400;700&display=swap"
     rel="stylesheet"
   />
 
   <link rel="icon" href="assets/logo.png" />
   <link rel="apple-touch-icon" href="assets/logo.png" />
-
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="app">
-    <header class="main-header" aria-label="Encabezado principal del juego">
-      <div class="brand-wrap">
+    <header class="topbar" aria-label="Barra superior del juego">
+      <div class="topbar-left">
         <img
           src="assets/logo.png"
           alt="Logo de Musicala"
@@ -39,46 +35,30 @@
         <div class="brand-copy">
           <p class="brand-kicker">Musicala Game Lab</p>
           <h1>Solitario Musical Cromático</h1>
-          <p class="brand-subtitle">
-            Un Klondike con notas, instrumentos y un poquito de dignidad visual.
-          </p>
         </div>
       </div>
 
-      <div class="action-group" aria-label="Acciones del juego">
-        <button
-          id="reset-stats-btn"
-          type="button"
-          class="action-btn secondary"
-          aria-label="Reiniciar historial guardado"
-          title="Borrar puntajes y estadísticas guardadas"
-        >
-          Reiniciar historial
-        </button>
-
-        <button
-          id="nueva-btn"
-          type="button"
-          class="action-btn primary"
-          aria-label="Iniciar una nueva partida"
-          title="Iniciar una nueva partida"
-        >
-          Nueva partida
-        </button>
+      <div class="topbar-right" aria-label="Resumen de la partida">
+        <div class="top-pill">
+          <span class="top-pill-label">Modo</span>
+          <strong>Clásico</strong>
+        </div>
+        <div class="top-pill">
+          <span class="top-pill-label">Puntuación</span>
+          <strong id="puntos">0</strong>
+        </div>
+        <div class="top-pill">
+          <span class="top-pill-label">Tiempo</span>
+          <strong id="tiempo">00:00</strong>
+        </div>
       </div>
     </header>
 
     <section class="hud-grid" aria-label="Estadísticas del juego">
       <article class="hud-card">
-        <span class="hud-label">Puntaje</span>
-        <strong id="puntos" class="hud-value">0</strong>
-        <small class="hud-hint">Partida actual</small>
-      </article>
-
-      <article class="hud-card">
         <span class="hud-label">Récord</span>
         <strong id="mejor-puntaje" class="hud-value">0</strong>
-        <small class="hud-hint">Guardado localmente</small>
+        <small class="hud-hint">Mejor puntuación guardada</small>
       </article>
 
       <article class="hud-card">
@@ -100,85 +80,100 @@
       </article>
 
       <article class="hud-card">
-        <span class="hud-label">Tiempo</span>
-        <strong id="tiempo" class="hud-value">00:00</strong>
-        <small class="hud-hint">Partida actual</small>
+        <span class="hud-label">Mejor tiempo</span>
+        <strong id="mejor-tiempo" class="hud-value">--:--</strong>
+        <small class="hud-hint">Guardado localmente</small>
+      </article>
+
+      <article class="hud-card">
+        <span class="hud-label">Partidas</span>
+        <strong id="partidas-jugadas" class="hud-value">0</strong>
+        <small class="hud-hint">Jugadas en este equipo</small>
       </article>
     </section>
 
-    <section class="meta-strip" aria-label="Resumen histórico">
-      <p>
-        Mejor tiempo:
-        <strong id="mejor-tiempo">--:--</strong>
-      </p>
-      <p>
-        Partidas jugadas:
-        <strong id="partidas-jugadas">0</strong>
-      </p>
-    </section>
-
-    <main class="game-shell" aria-label="Área principal del juego">
-      <section class="game-intro" aria-label="Descripción breve del juego">
+    <main class="table-shell" aria-label="Área principal del juego">
+      <section class="table-caption" aria-label="Indicaciones del juego">
         <p>
-          Construye cada fundación desde <strong>Do</strong> hasta <strong>Do↑</strong>,
-          alterna grupos <strong>oscuros</strong> y <strong>claros</strong> en el tablero,
-          y organiza toda la secuencia cromática sin que el caos humano gane otra vez.
+          Arrastra o toca cartas para moverlas. También puedes bajar otra vez al
+          tablero la carta superior de cada fundación.
         </p>
       </section>
 
       <section id="top-row" aria-label="Zona superior del juego">
-        <div
-          id="mazo"
-          class="zone"
-          role="button"
-          tabindex="0"
-          aria-label="Mazo"
-          title="Toca para robar una carta"
-        ></div>
+        <div class="zone-stack">
+          <span class="zone-title">Mazo</span>
+          <div
+            id="mazo"
+            class="zone"
+            role="button"
+            tabindex="0"
+            aria-label="Mazo"
+            title="Toca para robar una carta"
+          ></div>
+        </div>
 
-        <div
-          id="descarte"
-          class="zone"
-          role="button"
-          tabindex="0"
-          aria-label="Descarte"
-          title="Carta actual del descarte"
-        ></div>
+        <div class="zone-stack">
+          <span class="zone-title">Descarte</span>
+          <div
+            id="descarte"
+            class="zone"
+            role="button"
+            tabindex="0"
+            aria-label="Descarte"
+            title="Carta actual del descarte"
+          ></div>
+        </div>
 
         <div class="gsp" aria-hidden="true"></div>
 
-        <div
-          class="funda zone"
-          data-fi="0"
-          role="button"
-          tabindex="0"
-          aria-label="Fundación 1"
-          title="Fundación 1"
-        ></div>
-        <div
-          class="funda zone"
-          data-fi="1"
-          role="button"
-          tabindex="0"
-          aria-label="Fundación 2"
-          title="Fundación 2"
-        ></div>
-        <div
-          class="funda zone"
-          data-fi="2"
-          role="button"
-          tabindex="0"
-          aria-label="Fundación 3"
-          title="Fundación 3"
-        ></div>
-        <div
-          class="funda zone"
-          data-fi="3"
-          role="button"
-          tabindex="0"
-          aria-label="Fundación 4"
-          title="Fundación 4"
-        ></div>
+        <div class="zone-stack">
+          <span class="zone-title">Fundación 1</span>
+          <div
+            class="funda zone"
+            data-fi="0"
+            role="button"
+            tabindex="0"
+            aria-label="Fundación 1"
+            title="Fundación 1"
+          ></div>
+        </div>
+
+        <div class="zone-stack">
+          <span class="zone-title">Fundación 2</span>
+          <div
+            class="funda zone"
+            data-fi="1"
+            role="button"
+            tabindex="0"
+            aria-label="Fundación 2"
+            title="Fundación 2"
+          ></div>
+        </div>
+
+        <div class="zone-stack">
+          <span class="zone-title">Fundación 3</span>
+          <div
+            class="funda zone"
+            data-fi="2"
+            role="button"
+            tabindex="0"
+            aria-label="Fundación 3"
+            title="Fundación 3"
+          ></div>
+        </div>
+
+        <div class="zone-stack">
+          <span class="zone-title">Fundación 4</span>
+          <div
+            class="funda zone"
+            data-fi="3"
+            role="button"
+            tabindex="0"
+            aria-label="Fundación 4"
+            title="Fundación 4"
+          ></div>
+        </div>
       </section>
 
       <section id="tablero-area" aria-label="Tablero de siete columnas">
@@ -192,10 +187,46 @@
       </section>
     </main>
 
-    <footer class="game-footer" aria-label="Pie del juego">
-      <p>
-        Musicala · Solitario experimental con notas cromáticas, persistencia local y más personalidad.
-      </p>
+    <footer class="action-bar" aria-label="Acciones principales">
+      <button
+        id="nueva-btn"
+        type="button"
+        class="action-item action-item-primary"
+        aria-label="Iniciar una nueva partida"
+        title="Iniciar una nueva partida"
+      >
+        Nuevo
+      </button>
+
+      <button
+        id="reciclar-btn"
+        type="button"
+        class="action-item"
+        aria-label="Robar carta o reciclar el descarte"
+        title="Robar o reciclar"
+      >
+        Robar / reciclar
+      </button>
+
+      <button
+        id="ayuda-btn"
+        type="button"
+        class="action-item"
+        aria-label="Mostrar ayuda rápida"
+        title="Cómo mover"
+      >
+        Cómo mover
+      </button>
+
+      <button
+        id="reset-stats-btn"
+        type="button"
+        class="action-item"
+        aria-label="Reiniciar historial guardado"
+        title="Borrar puntajes y estadísticas guardadas"
+      >
+        Reiniciar historial
+      </button>
     </footer>
   </div>
 
@@ -217,7 +248,6 @@
       </div>
 
       <div class="win-notas" aria-hidden="true">♩ ♪ ♫ ♬</div>
-
       <h2 id="win-title">¡Armonía completa!</h2>
 
       <p class="win-msg">
@@ -242,7 +272,7 @@
       <button
         id="play-again-btn"
         type="button"
-        class="action-btn primary"
+        class="action-item action-item-primary action-item-wide"
         aria-label="Volver a jugar"
       >
         Volver a jugar
@@ -253,9 +283,7 @@
   <div id="toast" aria-live="polite" aria-atomic="true"></div>
 
   <noscript>
-    <p class="no-js">
-      Este juego necesita JavaScript para funcionar.
-    </p>
+    <p class="no-js">Este juego necesita JavaScript para funcionar.</p>
   </noscript>
 
   <script src="game.js"></script>
