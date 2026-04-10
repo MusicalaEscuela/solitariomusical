@@ -328,6 +328,10 @@ function calcDims() {
 }
 
 function programarRecalculoLayout() {
+  // No recalcular mientras el usuario está arrastrando:
+  // el ResizeObserver o el resize de viewport destruiría el DOM del ghost.
+  if (dragState?.dragging) return;
+
   if (resizeRaf) {
     window.cancelAnimationFrame(resizeRaf);
   }
@@ -1040,7 +1044,9 @@ function onPointerDownGlobal(event) {
 
 function onPointerMoveGlobal(event) {
   if (!dragState || dragState.pointerId !== event.pointerId) return;
-  if (dragState.dragging) event.preventDefault();
+  // Siempre prevenir default cuando estamos siguiendo un posible arrastre;
+  // si no, el browser móvil toma el control con scroll nativo y rompe todo.
+  event.preventDefault();
 
   if (!dragState.dragging) {
     const movedEnough =
@@ -1131,8 +1137,10 @@ function initEventos() {
     if (col) onClickColVacia(Number(col.dataset.col));
   });
 
-  document.addEventListener('pointerdown', onPointerDownGlobal);
-  document.addEventListener('pointermove', onPointerMoveGlobal);
+  // passive: false es crítico en móvil para que event.preventDefault() funcione
+  // y el browser no inicie scroll/pan nativo mientras arrastramos.
+  document.addEventListener('pointerdown', onPointerDownGlobal, { passive: false });
+  document.addEventListener('pointermove', onPointerMoveGlobal, { passive: false });
   document.addEventListener('pointerup', onPointerUpGlobal);
   document.addEventListener('pointercancel', onPointerCancelGlobal);
   document.addEventListener('click', event => {
