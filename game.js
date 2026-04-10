@@ -1112,6 +1112,7 @@ function initEventos() {
   const resetStatsBtn = getEl('reset-stats-btn');
   const reciclarBtn = getEl('reciclar-btn');
   const ayudaBtn = getEl('ayuda-btn');
+  const reglasBtn = getEl('reglas-btn');
 
   mazoEl?.addEventListener('click', onClickMazo);
   mazoEl?.addEventListener('keydown', event => onKeyActivate(event, onClickMazo));
@@ -1154,6 +1155,7 @@ function initEventos() {
   playAgainBtn?.addEventListener('click', nuevaPartida);
   reciclarBtn?.addEventListener('click', onClickMazo);
   ayudaBtn?.addEventListener('click', () => toast(MENSAJES.AYUDA));
+  reglasBtn?.addEventListener('click', abrirIntro);
 
   resetStatsBtn?.addEventListener('click', () => {
     const confirmado = window.confirm(
@@ -1165,11 +1167,82 @@ function initEventos() {
   });
 }
 
+
+// ═══════════════════════════════════════════════════════
+// PANTALLA DE INTRODUCCIÓN / REGLAS
+// ═══════════════════════════════════════════════════════
+
+const INTRO_STORAGE_KEY = 'musicala_solitario_intro_v1';
+
+function debesMostrarIntro() {
+  try {
+    return !localStorage.getItem(INTRO_STORAGE_KEY);
+  } catch {
+    return true;
+  }
+}
+
+function marcarIntroVista() {
+  try {
+    const check = getEl('intro-noshowagain-check');
+    if (check?.checked) {
+      localStorage.setItem(INTRO_STORAGE_KEY, '1');
+    }
+  } catch {
+    // sin storage, no bloqueamos
+  }
+}
+
+function cerrarIntro() {
+  const intro = getEl('intro');
+  if (!intro || intro.classList.contains('oculto')) return;
+
+  marcarIntroVista();
+
+  intro.classList.add('intro-saliendo');
+  intro.addEventListener('animationend', () => {
+    intro.classList.add('oculto');
+    intro.classList.remove('intro-saliendo');
+  }, { once: true });
+}
+
+function abrirIntro() {
+  const intro = getEl('intro');
+  if (!intro) return;
+
+  // Scroll al inicio del body del panel al abrir
+  const body = intro.querySelector('.intro-body');
+  if (body) body.scrollTop = 0;
+
+  intro.classList.remove('oculto', 'intro-saliendo');
+}
+
+function initIntro() {
+  getEl('intro-play-btn')?.addEventListener('click', cerrarIntro);
+  getEl('intro-close')?.addEventListener('click', cerrarIntro);
+  getEl('reglas-btn')?.addEventListener('click', abrirIntro);
+
+  // Cerrar con Escape
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      const intro = getEl('intro');
+      if (intro && !intro.classList.contains('oculto')) {
+        cerrarIntro();
+      }
+    }
+  });
+
+  if (!debesMostrarIntro()) {
+    getEl('intro')?.classList.add('oculto');
+  }
+}
+
 window.addEventListener('load', () => {
   asegurarToast();
   calcDims();
   initEventos();
   initLayoutObservers();
+  initIntro();
   actualizarHud();
   nuevaPartida();
 });

@@ -209,11 +209,22 @@
       </button>
 
       <button
+        id="reglas-btn"
+        type="button"
+        class="action-item"
+        aria-label="Ver reglas del juego"
+        title="Ver reglas"
+      >
+        Reglas
+      </button>
+
+      <button
         id="ayuda-btn"
         type="button"
         class="action-item"
         aria-label="Mostrar ayuda rápida"
         title="Cómo mover"
+        style="display:none"
       >
         Cómo mover
       </button>
@@ -229,6 +240,232 @@
       </button>
     </footer>
   </div>
+
+  <!-- ═══════════════════════════════════════════════
+       PANTALLA DE INTRODUCCIÓN / REGLAS
+  ════════════════════════════════════════════════ -->
+  <div id="intro" role="dialog" aria-modal="true" aria-labelledby="intro-title">
+    <div id="intro-panel">
+
+      <div class="intro-header">
+        <div class="intro-brand">
+          <img src="assets/logo.png" alt="Logo Musicala" class="intro-logo" onerror="this.style.display='none'" />
+          <div>
+            <p class="intro-kicker">Musicala Game Lab</p>
+            <h2 id="intro-title">Solitario Musical Cromático</h2>
+          </div>
+        </div>
+        <button id="intro-close" class="intro-close-btn" aria-label="Cerrar reglas y jugar" title="Cerrar">✕</button>
+      </div>
+
+      <div class="intro-body">
+
+        <!-- ── ESCALA CROMÁTICA ── -->
+        <section class="intro-section">
+          <div class="intro-section-tag">La escala</div>
+          <h3 class="intro-section-title">La Escala Cromática</h3>
+          <p class="intro-section-desc">
+            En lugar de los valores del solitario tradicional, las cartas usan las
+            <strong>13 notas de la escala cromática</strong>, de Do grave a Do agudo.
+            Cada semitono es un rango diferente.
+          </p>
+          <div class="intro-scale">
+            <div class="intro-note intro-note-natural">Do</div>
+            <div class="intro-note intro-note-sharp">Do♯</div>
+            <div class="intro-note intro-note-natural">Re</div>
+            <div class="intro-note intro-note-sharp">Re♯</div>
+            <div class="intro-note intro-note-natural">Mi</div>
+            <div class="intro-note intro-note-natural">Fa</div>
+            <div class="intro-note intro-note-sharp">Fa♯</div>
+            <div class="intro-note intro-note-natural">Sol</div>
+            <div class="intro-note intro-note-sharp">Sol♯</div>
+            <div class="intro-note intro-note-natural">La</div>
+            <div class="intro-note intro-note-sharp">La♯</div>
+            <div class="intro-note intro-note-natural">Si</div>
+            <div class="intro-note intro-note-top">Do↑</div>
+          </div>
+          <p class="intro-scale-hint">
+            <span class="badge-natural">Notas naturales</span>
+            <span class="badge-sharp">Sostenidos (♯)</span>
+            <span class="badge-top">Do↑ = nota más alta</span>
+          </p>
+        </section>
+
+        <div class="intro-divider"><span>♩</span></div>
+
+        <!-- ── LOS PALOS ── -->
+        <section class="intro-section">
+          <div class="intro-section-tag">Los palos</div>
+          <h3 class="intro-section-title">Familias de Instrumentos</h3>
+          <p class="intro-section-desc">
+            Hay <strong>4 palos</strong>, cada uno representa una familia de instrumentos.
+            Los colores importan a la hora de mover cartas en el tablero.
+          </p>
+          <div class="intro-palos">
+            <div class="intro-palo palo-oscuro">
+              <div class="palo-ico">🎹</div>
+              <div class="palo-name">Teclas</div>
+              <div class="palo-badge badge-dark">Oscuro</div>
+            </div>
+            <div class="intro-palo palo-oscuro">
+              <div class="palo-ico">🥁</div>
+              <div class="palo-name">Percusión</div>
+              <div class="palo-badge badge-dark">Oscuro</div>
+            </div>
+            <div class="intro-palo palo-claro">
+              <div class="palo-ico">🎸</div>
+              <div class="palo-name">Cuerdas</div>
+              <div class="palo-badge badge-light">Claro</div>
+            </div>
+            <div class="intro-palo palo-claro">
+              <div class="palo-ico">🎺</div>
+              <div class="palo-name">Vientos</div>
+              <div class="palo-badge badge-light">Claro</div>
+            </div>
+          </div>
+        </section>
+
+        <div class="intro-divider"><span>♪</span></div>
+
+        <!-- ── OBJETIVO ── -->
+        <section class="intro-section">
+          <div class="intro-section-tag">El objetivo</div>
+          <h3 class="intro-section-title">Construye las Fundaciones</h3>
+          <p class="intro-section-desc">
+            El objetivo es completar las <strong>4 fundaciones</strong>, una por palo.
+            Cada fundación debe construirse <em>de Do a Do↑</em>, en orden cromático ascendente.
+          </p>
+          <div class="intro-fundaciones">
+            <div class="intro-funda-demo">
+              <div class="demo-funda-pile">
+                <div class="demo-card demo-card-back"></div>
+                <div class="demo-card demo-card-back"></div>
+                <div class="demo-card demo-card-front dark-card">
+                  <span class="dc-nota">Do</span>
+                  <span class="dc-ico">🎹</span>
+                </div>
+              </div>
+              <div class="demo-arrow">→</div>
+              <div class="demo-card demo-card-front dark-card demo-funda-full">
+                <span class="dc-nota-big">Do↑</span>
+                <span class="dc-ico-big">🎹</span>
+                <span class="demo-complete-badge">✓ 13/13</span>
+              </div>
+            </div>
+            <p class="intro-funda-caption">
+              Inicia cada fundación con <strong>Do</strong> y termínala con <strong>Do↑</strong>.
+              Solo se puede subir una carta a la vez.
+            </p>
+          </div>
+        </section>
+
+        <div class="intro-divider"><span>♫</span></div>
+
+        <!-- ── REGLAS DE MOVIMIENTO ── -->
+        <section class="intro-section">
+          <div class="intro-section-tag">Cómo mover</div>
+          <h3 class="intro-section-title">Movimientos en el Tablero</h3>
+          <div class="intro-reglas">
+            <div class="intro-regla">
+              <div class="regla-ico">🎯</div>
+              <div class="regla-texto">
+                <strong>Alternancia de color</strong><br />
+                Solo puedes colocar una carta sobre otra si sus palos son de
+                <em>tipo contrario</em>: oscuro sobre claro, claro sobre oscuro.
+              </div>
+            </div>
+            <div class="intro-regla">
+              <div class="regla-ico">⬇️</div>
+              <div class="regla-texto">
+                <strong>Orden descendente</strong><br />
+                La carta que colocas debe ser exactamente <em>un semitono menor</em>
+                que la carta destino. Ejemplo: Re♯ va sobre Mi.
+              </div>
+            </div>
+            <div class="intro-regla">
+              <div class="regla-ico">🃏</div>
+              <div class="regla-texto">
+                <strong>Columna vacía</strong><br />
+                Solo <strong>Do↑</strong> puede iniciar una columna vacía
+                (equivale al Rey del solitario clásico).
+              </div>
+            </div>
+            <div class="intro-regla">
+              <div class="regla-ico">📦</div>
+              <div class="regla-texto">
+                <strong>Grupos de cartas</strong><br />
+                Puedes arrastrar o seleccionar una secuencia válida de cartas
+                al mismo tiempo y moverlas en bloque a otra columna.
+              </div>
+            </div>
+            <div class="intro-regla">
+              <div class="regla-ico">⬆️</div>
+              <div class="regla-texto">
+                <strong>Bajar desde fundación</strong><br />
+                La carta superior de una fundación puede bajar al tablero si lo necesitas.
+                Cuesta puntos, pero a veces es la jugada clave.
+              </div>
+            </div>
+            <div class="intro-regla">
+              <div class="regla-ico">↺</div>
+              <div class="regla-texto">
+                <strong>Mazo y descarte</strong><br />
+                Roba del mazo de a una carta. Cuando se agota, puedes reciclar el
+                descarte para reiniciarlo (resta puntos).
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="intro-divider"><span>♬</span></div>
+
+        <!-- ── PUNTUACIÓN ── -->
+        <section class="intro-section">
+          <div class="intro-section-tag">Puntuación</div>
+          <h3 class="intro-section-title">¿Cómo se calculan los puntos?</h3>
+          <div class="intro-puntos-grid">
+            <div class="punto-item">
+              <span class="punto-val plus">+10</span>
+              <span class="punto-desc">Carta a fundación</span>
+            </div>
+            <div class="punto-item">
+              <span class="punto-val plus">+5</span>
+              <span class="punto-desc">Mover al tablero</span>
+            </div>
+            <div class="punto-item">
+              <span class="punto-val plus">+5</span>
+              <span class="punto-desc">Voltear carta</span>
+            </div>
+            <div class="punto-item">
+              <span class="punto-val plus">+2</span>
+              <span class="punto-desc">Robar del mazo</span>
+            </div>
+            <div class="punto-item">
+              <span class="punto-val minus">−5</span>
+              <span class="punto-desc">Bajar de fundación</span>
+            </div>
+            <div class="punto-item">
+              <span class="punto-val minus">−15</span>
+              <span class="punto-desc">Reciclar descarte</span>
+            </div>
+          </div>
+        </section>
+
+      </div><!-- /intro-body -->
+
+      <div class="intro-footer">
+        <label class="intro-noshowagain">
+          <input type="checkbox" id="intro-noshowagain-check" />
+          <span>No volver a mostrar al iniciar</span>
+        </label>
+        <button id="intro-play-btn" class="intro-play-btn">
+          ¡A jugar! <span class="intro-play-ico" aria-hidden="true">🎵</span>
+        </button>
+      </div>
+
+    </div><!-- /intro-panel -->
+  </div><!-- /intro -->
+
 
   <div
     id="win"
