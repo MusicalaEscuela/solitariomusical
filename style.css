@@ -165,6 +165,10 @@ h1 {
   line-height: 1;
 }
 
+.top-pill-mode {
+  cursor: pointer;
+}
+
 .hud-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -669,22 +673,29 @@ body.is-dragging .col {
 
 @media (max-width: 900px) {
   .topbar {
-    flex-direction: column;
-    align-items: stretch;
+    gap: 10px;
+    padding: 12px;
   }
 
   .topbar-right {
-    justify-content: stretch;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
   }
 
   .top-pill {
-    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
   }
 }
 
 @media (max-width: 720px) {
-  .hud-grid,
+  .hud-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
   .action-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -697,38 +708,114 @@ body.is-dragging .col {
 @media (max-width: 520px) {
   #app {
     padding: 8px;
-  }
-
-  .topbar {
-    padding: 12px;
-  }
-
-  .topbar-left {
-    align-items: flex-start;
-  }
-
-  .topbar-right {
     gap: 8px;
   }
 
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .topbar-left {
+    width: 100%;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .brand-copy {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .topbar-right {
+    gap: 5px;
+  }
+
   .top-pill {
-    min-width: calc(50% - 4px);
+    padding: 7px 8px;
+    border-radius: 12px;
+  }
+
+  .top-pill-label {
+    margin-bottom: 4px;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+  }
+
+  .top-pill strong {
+    font-size: clamp(16px, 5vw, 20px);
+  }
+
+  .brand-kicker {
+    display: none;
+  }
+
+  h1 {
+    font-size: clamp(16px, 6vw, 22px);
+    line-height: 1.06;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    text-wrap: pretty;
+  }
+
+  .brand-logo {
+    width: 36px;
+    height: 36px;
+  }
+
+  .hud-card {
+    padding: 8px 10px;
+    border-radius: 12px;
+  }
+
+  .hud-label {
+    margin-bottom: 4px;
+    font-size: 9px;
+  }
+
+  .hud-value {
+    margin-bottom: 0;
+    font-size: clamp(16px, 5.2vw, 20px);
+  }
+
+  .hud-hint {
+    display: none;
+  }
+
+  .table-caption {
+    display: none;
+  }
+
+  .table-shell {
+    padding: 8px;
+    border-radius: 18px;
+  }
+
+  #top-row {
+    margin-bottom: 10px;
   }
 
   .zone-title {
+    margin-bottom: 4px;
     font-size: 9px;
   }
 }
 
 @media (max-width: 420px) {
-  .hud-grid,
+  .hud-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .action-bar,
   .win-stats {
     grid-template-columns: 1fr;
   }
 
   .top-pill {
-    min-width: 100%;
+    padding: 6px 7px;
   }
 }
 

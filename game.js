@@ -31,6 +31,27 @@ const MENSAJES = {
 };
 
 const STORAGE_KEY = 'musicala_solitario_stats_v5';
+const MODE_STORAGE_KEY = 'musicala_solitario_modo_v1';
+
+const GAME_MODES = [
+  {
+    id: 'clasico',
+    label: 'Clásico',
+    dealStrategy: 'random'
+  },
+  {
+    id: 'amable',
+    label: 'Amable',
+    dealStrategy: 'best_of',
+    attempts: 10
+  },
+  {
+    id: 'experto',
+    label: 'Experto',
+    dealStrategy: 'worst_of',
+    attempts: 8
+  }
+];
 
 const DEFAULT_STATS = {
   bestScore: 0,
@@ -62,8 +83,9 @@ const DRAG_THRESHOLD = 8;
 let mazo = [];
 let descarte = [];
 let fundas = [[], [], [], []];
-let tablero = [];
+let tablero = Array.from({ length: 7 }, () => []);
 let sel = null;
+let currentModeId = cargarModo();
 
 let puntos = 0;
 let movimientos = 0;
@@ -199,6 +221,37 @@ function normalizarStats(rawStats) {
         : Math.max(0, Number(safe.bestTimeSeconds)),
     lastScore: Number.isFinite(Number(safe.lastScore)) ? Math.max(0, Number(safe.lastScore)) : 0
   };
+}
+
+function buscarModoPorId(modeId) {
+  return GAME_MODES.find(mode => mode.id === modeId) || GAME_MODES[0];
+}
+
+function getCurrentMode() {
+  return buscarModoPorId(currentModeId);
+}
+
+function cargarModo() {
+  try {
+    const raw = localStorage.getItem(MODE_STORAGE_KEY);
+    if (!raw) return GAME_MODES[0].id;
+    return buscarModoPorId(raw).id;
+  } catch {
+    return GAME_MODES[0].id;
+  }
+}
+
+function persistirModo() {
+  try {
+    localStorage.setItem(MODE_STORAGE_KEY, currentModeId);
+  } catch {
+    // Sin storage disponible, seguimos sin bloquear el juego.
+  }
+}
+
+function actualizarModoUI() {
+  const modo = getCurrentMode();
+  setText('modo-actual', modo.label);
 }
 
 function cargarEstadisticas() {
@@ -379,6 +432,91 @@ function mezclar(arr) {
   return arr;
 }
 
+function repartirDesdeBaraja(baraja) {
+  const mazoLocal = [];
+  const fundasLocal = [[], [], [], []];
+  const tableroLocal = Array.from({ length: 7 }, () => []);
+  let i = 0;
+
+  for (let c = 0; c < 7; c += 1) {
+    for (let r = 0; r <= c; r += 1) {
+      const carta = { ...baraja[i], up: (r === c) };
+      tableroLocal[c].push(carta);
+      i += 1;
+    }
+  }
+
+  while (i < 52) {
+    mazoLocal.push({ ...baraja[i], up: false });
+    i += 1;
+  }
+
+  return { mazoLocal, fundasLocal, tableroLocal };
+}
+
+function evaluarSalidaInicial(tableroLocal) {
+  let puntaje = 0;
+  const topes = tableroLocal.map(col => col[col.length - 1]).filter(Boolean);
+
+  // Aces visibles al inicio facilitan arrancar fundaciones.
+  puntaje += topes.filter(carta => carta.n === 0).length * 9;
+
+  // Reyes visibles ayudan a mover cartas hacia columnas vacías pronto.
+  puntaje += topes.filter(carta => carta.n === 12).length * 4;
+
+  // Premiar movimientos iniciales posibles entre topes.
+  for (let i = 0; i < topes.length; i += 1) {
+    for (let j = 0; j < topes.length; j += 1) {
+      if (i === j) continue;
+      if (
+        PALOS[topes[i].p].tipo !== PALOS[topes[j].p].tipo &&
+        topes[i].n === topes[j].n - 1
+      ) {
+        puntaje += 2;
+      }
+    }
+  }
+
+  // Menos penalización si en las primeras columnas queda menos bloqueo oculto.
+  tableroLocal.forEach((col, idx) => {
+    const ocultas = col.slice(0, -1).filter(carta => !carta.up).length;
+    puntaje -= ocultas * (idx < 3 ? 2 : 1);
+  });
+
+  return puntaje;
+}
+
+function crearEscenarioInicial() {
+  const mode = getCurrentMode();
+
+  if (mode.dealStrategy === 'random') {
+    const baraja = mezclar(crearBaraja());
+    return repartirDesdeBaraja(baraja);
+  }
+
+  const attempts = Math.max(2, Number(mode.attempts || 2));
+  let mejor = null;
+  let mejorScore = mode.dealStrategy === 'worst_of' ? Infinity : -Infinity;
+
+  for (let i = 0; i < attempts; i += 1) {
+    const baraja = mezclar(crearBaraja());
+    const escenario = repartirDesdeBaraja(baraja);
+    const score = evaluarSalidaInicial(escenario.tableroLocal);
+
+    if (mode.dealStrategy === 'best_of' && score > mejorScore) {
+      mejorScore = score;
+      mejor = escenario;
+    }
+
+    if (mode.dealStrategy === 'worst_of' && score < mejorScore) {
+      mejorScore = score;
+      mejor = escenario;
+    }
+  }
+
+  return mejor || repartirDesdeBaraja(mezclar(crearBaraja()));
+}
+
 function nuevaPartida() {
   cancelarArrastre();
 
@@ -387,32 +525,18 @@ function nuevaPartida() {
     persistirEstadisticas();
   }
 
-  const b = mezclar(crearBaraja());
+  const escenario = crearEscenarioInicial();
 
-  mazo = [];
+  mazo = escenario.mazoLocal;
   descarte = [];
-  fundas = [[], [], [], []];
-  tablero = Array.from({ length: 7 }, () => []);
+  fundas = escenario.fundasLocal;
+  tablero = escenario.tableroLocal;
   limpiarSeleccion();
 
   puntos = 0;
   movimientos = 0;
   partidaRegistrada = false;
   partidaGanada = false;
-
-  let i = 0;
-  for (let c = 0; c < 7; c += 1) {
-    for (let r = 0; r <= c; r += 1) {
-      b[i].up = (r === c);
-      tablero[c].push(b[i]);
-      i += 1;
-    }
-  }
-
-  while (i < 52) {
-    mazo.push(b[i]);
-    i += 1;
-  }
 
   const win = getEl('win');
   if (win) win.classList.add('oculto');
@@ -847,7 +971,7 @@ function renderTablero() {
     if (!cEl) continue;
 
     cEl.classList.remove('drop-target');
-    const pila = tablero[col];
+    const pila = Array.isArray(tablero[col]) ? tablero[col] : [];
 
     if (!pila.length) {
       cEl.innerHTML = '<div class="slot-ph"></div>';
@@ -1113,6 +1237,7 @@ function initEventos() {
   const reciclarBtn = getEl('reciclar-btn');
   const ayudaBtn = getEl('ayuda-btn');
   const reglasBtn = getEl('reglas-btn');
+  const modoPill = getEl('modo-pill');
 
   mazoEl?.addEventListener('click', onClickMazo);
   mazoEl?.addEventListener('keydown', event => onKeyActivate(event, onClickMazo));
@@ -1165,6 +1290,19 @@ function initEventos() {
     if (!confirmado) return;
     resetearEstadisticas();
   });
+
+  const cambiarModo = () => {
+    const idx = GAME_MODES.findIndex(mode => mode.id === currentModeId);
+    const next = GAME_MODES[(idx + 1) % GAME_MODES.length];
+    currentModeId = next.id;
+    persistirModo();
+    actualizarModoUI();
+    toast(`Modo ${next.label}`);
+    nuevaPartida();
+  };
+
+  modoPill?.addEventListener('click', cambiarModo);
+  modoPill?.addEventListener('keydown', event => onKeyActivate(event, cambiarModo));
 }
 
 
@@ -1243,6 +1381,7 @@ window.addEventListener('load', () => {
   initEventos();
   initLayoutObservers();
   initIntro();
+  actualizarModoUI();
   actualizarHud();
   nuevaPartida();
 });

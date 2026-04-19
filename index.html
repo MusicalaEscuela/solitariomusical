@@ -39,9 +39,16 @@
       </div>
 
       <div class="topbar-right" aria-label="Resumen de la partida">
-        <div class="top-pill">
+        <div
+          class="top-pill top-pill-mode"
+          id="modo-pill"
+          role="button"
+          tabindex="0"
+          aria-label="Cambiar dificultad"
+          title="Cambiar dificultad"
+        >
           <span class="top-pill-label">Modo</span>
-          <strong>Clásico</strong>
+          <strong id="modo-actual">Clásico</strong>
         </div>
         <div class="top-pill">
           <span class="top-pill-label">Puntuación</span>
@@ -128,7 +135,7 @@
         <div class="gsp" aria-hidden="true"></div>
 
         <div class="zone-stack">
-          <span class="zone-title">Fundación 1</span>
+          <span class="zone-title">1</span>
           <div
             class="funda zone"
             data-fi="0"
@@ -140,7 +147,7 @@
         </div>
 
         <div class="zone-stack">
-          <span class="zone-title">Fundación 2</span>
+          <span class="zone-title">2</span>
           <div
             class="funda zone"
             data-fi="1"
@@ -152,7 +159,7 @@
         </div>
 
         <div class="zone-stack">
-          <span class="zone-title">Fundación 3</span>
+          <span class="zone-title">3</span>
           <div
             class="funda zone"
             data-fi="2"
@@ -164,7 +171,7 @@
         </div>
 
         <div class="zone-stack">
-          <span class="zone-title">Fundación 4</span>
+          <span class="zone-title">4</span>
           <div
             class="funda zone"
             data-fi="3"
