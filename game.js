@@ -39,6 +39,7 @@ const MENSAJES = {
   MOV_INVALIDO: 'Ese movimiento no encaja.',
   SOLO_MAXIMA_VACIA: 'Solo Do↑ abre una columna vacía.',
   RECICLADO: 'El descarte volvió al mazo.',
+  GAME_OVER: 'No quedan movimientos posibles. Game over.',
   STATS_REINICIADAS: 'Historial reiniciado en este dispositivo.',
   AYUDA: 'Arrastra cartas o tócalas. También puedes bajar la carta superior de una fundación al tablero.'
 };
@@ -104,6 +105,7 @@ let puntos = 0;
 let movimientos = 0;
 let partidaRegistrada = false;
 let partidaGanada = false;
+let partidaPerdida = false;
 
 let inicioPartidaMs = Date.now();
 let relojTimer = null;
@@ -328,6 +330,12 @@ function actualizarOverlayVictoria() {
   setText('victorias-total', formatearNumero(stats.gamesWon));
 }
 
+function actualizarOverlayGameOver() {
+  setText('game-over-puntos', formatearNumero(puntos));
+  setText('game-over-tiempo', formatearTiempo(getElapsedSeconds()));
+  setText('game-over-movimientos', formatearNumero(movimientos));
+}
+
 function sumarPuntos(valor) {
   puntos += valor;
   if (puntos < 0) puntos = 0;
@@ -367,6 +375,7 @@ function actualizarHud() {
   );
   setText('partidas-jugadas', formatearNumero(stats.gamesPlayed));
   actualizarOverlayVictoria();
+  actualizarOverlayGameOver();
 }
 
 function normalizarStats(rawStats) {
@@ -701,12 +710,17 @@ function nuevaPartida() {
   movimientos = 0;
   partidaRegistrada = false;
   partidaGanada = false;
+  partidaPerdida = false;
 
   const win = getEl('win');
   if (win) win.classList.add('oculto');
 
+  const gameOver = getEl('game-over');
+  if (gameOver) gameOver.classList.add('oculto');
+
   iniciarReloj();
   renderizar();
+  verificarGameOver();
 }
 
 function puedeEnFunda(carta, fi) {
@@ -828,11 +842,13 @@ function toast(msg) {
 }
 
 function onClickMazo() {
+  if (partidaPerdida || partidaGanada) return;
   limpiarSeleccion();
 
   if (mazo.length === 0) {
     if (descarte.length === 0) {
       renderizar();
+      verificarGameOver();
       return;
     }
 
@@ -842,6 +858,7 @@ function onClickMazo() {
     sumarPuntos(-PUNTAJES.RECICLAR);
     toast(MENSAJES.RECICLADO);
     renderizar();
+    verificarGameOver();
     return;
   }
 
@@ -851,9 +868,11 @@ function onClickMazo() {
   descarte.push(carta);
   sumarPuntos(PUNTAJES.ROBAR_MAZO);
   renderizar();
+  verificarGameOver();
 }
 
 function onClickDescarte() {
+  if (partidaPerdida || partidaGanada) return;
   if (!descarte.length) return;
 
   if (haySeleccionEnDescarte()) {
@@ -889,6 +908,7 @@ function moverDesdeOrigenATablero(origen, col, opts = {}) {
     sumarPuntos(PUNTAJES.MOVER_TABLERO);
   }
 
+  verificarGameOver();
   return true;
 }
 
@@ -912,10 +932,12 @@ function moverDesdeOrigenAFunda(origen, fi, opts = {}) {
   tocarCartaSubidaAFunda(movidas[0], fi);
   sumarPuntos(PUNTAJES.MOVER_FUNDA);
   verificarVictoria();
+  verificarGameOver();
   return true;
 }
 
 function onClickFunda(fi) {
+  if (partidaPerdida || partidaGanada) return;
   const pila = fundas[fi];
 
   if (!sel) {
@@ -946,6 +968,7 @@ function onClickFunda(fi) {
 }
 
 function onClickCarta(col, idx) {
+  if (partidaPerdida || partidaGanada) return;
   const pila = tablero[col];
   if (!pila || idx < 0 || idx >= pila.length) return;
 
@@ -980,6 +1003,7 @@ function onClickCarta(col, idx) {
 }
 
 function onClickColVacia(col) {
+  if (partidaPerdida || partidaGanada) return;
   if (!sel) return;
 
   if (moverDesdeOrigenATablero(sel, col)) {
@@ -1019,6 +1043,99 @@ function verificarVictoria() {
     if (win) win.classList.remove('oculto');
     reproducirEscalaCromaticaFinal();
   }, 320);
+}
+
+function cartaPuedeIrAFunda(carta) {
+  if (!carta) return false;
+  return fundas.some((_, fi) => puedeEnFunda(carta, fi));
+}
+
+function cartaPuedeIrATablero(carta, colOrigen = null) {
+  if (!carta) return false;
+
+  return tablero.some((_, col) => {
+    if (colOrigen !== null && col === colOrigen) return false;
+    return puedeEnTablero(carta, col);
+  });
+}
+
+function hayMovimientoDesdeDescarte() {
+  const carta = descarte[descarte.length - 1];
+  return cartaPuedeIrAFunda(carta) || cartaPuedeIrATablero(carta);
+}
+
+function hayMovimientoDesdeTablero() {
+  for (let col = 0; col < tablero.length; col += 1) {
+    const pila = tablero[col];
+    if (!pila?.length) continue;
+
+    for (let idx = 0; idx < pila.length; idx += 1) {
+      const carta = pila[idx];
+      if (!carta?.up) continue;
+
+      const cartasMovidas = pila.slice(idx);
+
+      if (cartaPuedeIrATablero(carta, col)) return true;
+
+      if (cartasMovidas.length === 1 && cartaPuedeIrAFunda(carta)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function hayMovimientoDesdeFundas() {
+  return fundas.some(funda => {
+    const carta = funda[funda.length - 1];
+    return cartaPuedeIrATablero(carta);
+  });
+}
+
+function hayMovimientoFuturoDesdeMazoODescarte() {
+  // Con robo de una carta y reciclaje del descarte, cualquier carta del mazo
+  // o del descarte puede volver a quedar visible sin cambiar el tablero.
+  const cartasAccesibles = [...mazo, ...descarte];
+  return cartasAccesibles.some(carta => cartaPuedeIrAFunda(carta) || cartaPuedeIrATablero(carta));
+}
+
+function hayMovimientosDisponibles() {
+  return (
+    hayMovimientoDesdeDescarte() ||
+    hayMovimientoDesdeTablero() ||
+    hayMovimientoDesdeFundas() ||
+    hayMovimientoFuturoDesdeMazoODescarte()
+  );
+}
+
+function mostrarGameOver() {
+  if (partidaGanada || partidaPerdida) return;
+
+  partidaPerdida = true;
+  limpiarSeleccion();
+  cancelarArrastre();
+  detenerReloj();
+
+  if (movimientos > 0) {
+    registrarInicioPartida();
+    stats.currentStreak = 0;
+    stats.lastScore = puntos;
+    persistirEstadisticas();
+  }
+
+  actualizarHud();
+  actualizarOverlayGameOver();
+
+  const gameOver = getEl('game-over');
+  if (gameOver) gameOver.classList.remove('oculto');
+  toast(MENSAJES.GAME_OVER);
+}
+
+function verificarGameOver() {
+  if (partidaGanada || partidaPerdida) return;
+  if (hayMovimientosDisponibles()) return;
+  mostrarGameOver();
 }
 
 function slotHTML(icono = '') {
@@ -1317,6 +1434,7 @@ function cancelarArrastre() {
 }
 
 function onPointerDownGlobal(event) {
+  if (partidaPerdida || partidaGanada) return;
   if (event.button !== 0 && event.pointerType !== 'touch') return;
 
   const origin = getDraggableOriginFromTarget(event.target);
@@ -1399,6 +1517,7 @@ function initEventos() {
   const tableroArea = getEl('tablero-area');
   const nuevaBtn = getEl('nueva-btn');
   const playAgainBtn = getEl('play-again-btn');
+  const gameOverAgainBtn = getEl('game-over-again-btn');
   const resetStatsBtn = getEl('reset-stats-btn');
   const reciclarBtn = getEl('reciclar-btn');
   const ayudaBtn = getEl('ayuda-btn');
@@ -1447,6 +1566,7 @@ function initEventos() {
 
   nuevaBtn?.addEventListener('click', nuevaPartida);
   playAgainBtn?.addEventListener('click', nuevaPartida);
+  gameOverAgainBtn?.addEventListener('click', nuevaPartida);
   reciclarBtn?.addEventListener('click', onClickMazo);
   ayudaBtn?.addEventListener('click', () => toast(MENSAJES.AYUDA));
   reglasBtn?.addEventListener('click', abrirIntro);

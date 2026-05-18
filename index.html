@@ -530,6 +530,49 @@
     </div>
   </div>
 
+  <div
+    id="game-over"
+    class="oculto"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="game-over-title"
+  >
+    <div id="game-over-panel">
+      <div class="game-over-icon" aria-hidden="true">♭</div>
+      <p class="game-over-kicker">Fin de la partida</p>
+      <h2 id="game-over-title">Game over</h2>
+
+      <p class="game-over-msg">
+        Ya no quedan movimientos posibles, ni en el tablero ni revisando el ciclo completo del mazo y el descarte.
+      </p>
+
+      <div class="game-over-stats" aria-label="Resumen de la partida perdida">
+        <div class="game-over-stat">
+          <span>Puntaje</span>
+          <strong id="game-over-puntos">0</strong>
+        </div>
+        <div class="game-over-stat">
+          <span>Tiempo</span>
+          <strong id="game-over-tiempo">00:00</strong>
+        </div>
+        <div class="game-over-stat">
+          <span>Movimientos</span>
+          <strong id="game-over-movimientos">0</strong>
+        </div>
+      </div>
+
+      <button
+        id="game-over-again-btn"
+        type="button"
+        class="action-item action-item-primary action-item-wide"
+        aria-label="Iniciar una nueva partida"
+      >
+        Nueva partida
+      </button>
+    </div>
+  </div>
+
+
   <div id="toast" aria-live="polite" aria-atomic="true"></div>
 
   <noscript>
