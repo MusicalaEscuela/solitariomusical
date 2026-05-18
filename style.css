@@ -429,6 +429,60 @@ body.is-dragging .col {
     0 0 0 8px rgba(143, 224, 174, 0.12);
 }
 
+.funda.funda-sonando .slot-ph,
+.funda.funda-sonando .card {
+  animation: notaSubidaPulse 0.46s ease both;
+}
+
+.funda.funda-sonando::after {
+  content: "♪";
+  position: absolute;
+  right: -6px;
+  top: -13px;
+  z-index: 3;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 221, 141, 0.96);
+  color: #2d1b00;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+  animation: notaFlotante 0.46s ease both;
+}
+
+@keyframes notaSubidaPulse {
+  0% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+  }
+  42% {
+    transform: translateY(-4px) scale(1.035);
+    box-shadow:
+      0 0 0 3px rgba(255, 221, 141, 0.88),
+      0 14px 28px rgba(240, 194, 92, 0.28);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes notaFlotante {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.8);
+  }
+  32% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-12px) scale(1.08);
+  }
+}
+
 .c-tl,
 .c-br {
   display: flex;
@@ -625,6 +679,125 @@ body.is-dragging .col {
   font-size: 13px;
 }
 
+.win-scale-showcase {
+  margin: 0 0 16px;
+  padding: 12px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 22% 12%, rgba(255, 221, 141, 0.26), transparent 32%),
+    linear-gradient(180deg, rgba(34, 109, 70, 0.09), rgba(34, 109, 70, 0.05));
+  border: 1px solid rgba(34, 109, 70, 0.12);
+}
+
+.win-scale-caption {
+  margin: 0 0 9px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(42, 36, 27, 0.58);
+}
+
+.win-scale-foundations {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.win-scale-foundation {
+  min-width: 0;
+  padding: 8px 5px;
+  border-radius: 14px;
+  border: 1px solid rgba(42, 36, 27, 0.12);
+  background: rgba(255, 255, 255, 0.64);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.06);
+}
+
+.win-scale-foundation.oscuro {
+  color: #232323;
+}
+
+.win-scale-foundation.claro {
+  color: #c5162b;
+}
+
+.win-scale-icon {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.win-scale-current-note {
+  display: block;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.win-scale-foundation small {
+  display: block;
+  margin-top: 4px;
+  font-size: 8px;
+  color: rgba(42, 36, 27, 0.58);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.win-scale-foundation.is-playing {
+  animation: winFoundationBeat 0.32s ease both;
+}
+
+.win-scale-notes {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.win-scale-note {
+  min-width: 0;
+  padding: 5px 2px;
+  border-radius: 9px;
+  background: rgba(42, 36, 27, 0.08);
+  color: rgba(42, 36, 27, 0.5);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  transform-origin: center;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.win-scale-note.is-played {
+  background: rgba(34, 109, 70, 0.18);
+  color: rgba(21, 95, 57, 0.96);
+}
+
+.win-scale-note.is-active {
+  background: rgba(240, 194, 92, 0.95);
+  color: #2d1b00;
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 8px 16px rgba(240, 194, 92, 0.26);
+}
+
+@keyframes winFoundationBeat {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(-3px) scale(1.04);
+    box-shadow:
+      0 0 0 2px rgba(240, 194, 92, 0.62),
+      0 12px 18px rgba(0, 0, 0, 0.1);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
 .win-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -812,6 +985,14 @@ body.is-dragging .col {
   .action-bar,
   .win-stats {
     grid-template-columns: 1fr;
+  }
+
+  .win-scale-foundations {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .win-scale-notes {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 
   .top-pill {

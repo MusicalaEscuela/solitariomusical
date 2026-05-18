@@ -5,6 +5,19 @@ const NOTAS = [
   'Sol', 'Sol♯', 'La', 'La♯', 'Si', 'Do↑'
 ];
 
+const FRECUENCIAS_CROMATICAS = [
+  261.63, 277.18, 293.66, 311.13, 329.63, 349.23, 369.99,
+  392.00, 415.30, 440.00, 466.16, 493.88, 523.25
+];
+
+const AUDIO_CONFIG = {
+  DURACION_NOTA: 0.34,
+  DURACION_ESCALA: 0.32,
+  PAUSA_ESCALA: 0.38,
+  GANANCIA_NOTA: 0.07,
+  GANANCIA_ESCALA: 0.065
+};
+
 const PALOS = [
   { sym: '🎹', tipo: 'oscuro', nombre: 'Teclas', clase: 'funda-teclas' },
   { sym: '🥁', tipo: 'oscuro', nombre: 'Percusión', clase: 'funda-percusion' },
@@ -97,6 +110,8 @@ let relojTimer = null;
 let toastTimer = null;
 let resizeRaf = null;
 let resizeObserver = null;
+let audioCtx = null;
+let escalaFinalTimers = [];
 
 let stats = cargarEstadisticas();
 
@@ -140,6 +155,154 @@ function formatearTiempo(segundos) {
 function cartaToTexto(carta) {
   if (!carta) return '';
   return `${NOTAS[carta.n]} ${PALOS[carta.p].sym}`;
+}
+
+function getAudioContext() {
+  if (audioCtx) return audioCtx;
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) return null;
+
+  audioCtx = new AudioContextCtor();
+  return audioCtx;
+}
+
+function desbloquearAudio() {
+  const ctx = getAudioContext();
+  if (!ctx || ctx.state !== 'suspended') return;
+  ctx.resume().catch(() => {
+    // Algunos navegadores bloquean el audio hasta una interacción explícita.
+  });
+}
+
+function tocarFrecuencia(frecuencia, opts = {}) {
+  const ctx = getAudioContext();
+  if (!ctx || !Number.isFinite(frecuencia)) return;
+
+  desbloquearAudio();
+
+  const delay = Math.max(0, Number(opts.delay || 0));
+  const duration = Math.max(0.08, Number(opts.duration || AUDIO_CONFIG.DURACION_NOTA));
+  const gainValue = Math.max(0.01, Number(opts.gain || AUDIO_CONFIG.GANANCIA_NOTA));
+  const start = ctx.currentTime + delay;
+  const end = start + duration;
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+
+  osc.type = opts.type || 'sine';
+  osc.frequency.setValueAtTime(frecuencia, start);
+
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(2200, start);
+
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.025);
+  gain.gain.exponentialRampToValueAtTime(0.0001, end);
+
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start(start);
+  osc.stop(end + 0.03);
+}
+
+function tocarNota(notaIndex, opts = {}) {
+  const frecuencia = FRECUENCIAS_CROMATICAS[notaIndex];
+  tocarFrecuencia(frecuencia, opts);
+}
+
+function tocarCartaSubidaAFunda(carta, fi) {
+  if (!carta) return;
+  tocarNota(carta.n, {
+    duration: AUDIO_CONFIG.DURACION_NOTA,
+    gain: AUDIO_CONFIG.GANANCIA_NOTA
+  });
+  resaltarFundaSonora(fi);
+}
+
+function limpiarTimersEscalaFinal() {
+  escalaFinalTimers.forEach(timerId => window.clearTimeout(timerId));
+  escalaFinalTimers = [];
+}
+
+function resaltarFundaSonora(fi) {
+  const el = q(`.funda[data-fi="${fi}"]`);
+  if (!el) return;
+
+  el.classList.remove('funda-sonando');
+  void el.offsetWidth;
+  el.classList.add('funda-sonando');
+
+  window.setTimeout(() => {
+    el.classList.remove('funda-sonando');
+  }, 460);
+}
+
+function prepararUIEscalaFinal() {
+  const notesEl = getEl('win-scale-notes');
+  const foundationsEl = getEl('win-scale-foundations');
+
+  if (notesEl) {
+    notesEl.innerHTML = NOTAS.map((nota, idx) => `
+      <span class="win-scale-note" data-note-index="${idx}">${nota}</span>
+    `).join('');
+  }
+
+  if (foundationsEl) {
+    foundationsEl.innerHTML = PALOS.map((palo, idx) => `
+      <div class="win-scale-foundation ${palo.tipo}" data-foundation-index="${idx}">
+        <span class="win-scale-icon">${palo.sym}</span>
+        <strong class="win-scale-current-note">Do</strong>
+        <small>${palo.nombre}</small>
+      </div>
+    `).join('');
+  }
+}
+
+function actualizarUIEscalaFinal(notaIndex) {
+  const notes = $$('.win-scale-note');
+  const cards = $$('.win-scale-foundation');
+
+  notes.forEach((note, idx) => {
+    note.classList.toggle('is-active', idx === notaIndex);
+    note.classList.toggle('is-played', idx <= notaIndex);
+  });
+
+  cards.forEach(card => {
+    const noteEl = card.querySelector('.win-scale-current-note');
+    if (noteEl) noteEl.textContent = NOTAS[notaIndex];
+
+    card.classList.remove('is-playing');
+    void card.offsetWidth;
+    card.classList.add('is-playing');
+  });
+}
+
+function reproducirEscalaCromaticaFinal() {
+  limpiarTimersEscalaFinal();
+  prepararUIEscalaFinal();
+
+  NOTAS.forEach((nota, idx) => {
+    const timerId = window.setTimeout(() => {
+      actualizarUIEscalaFinal(idx);
+      tocarNota(idx, {
+        duration: AUDIO_CONFIG.DURACION_ESCALA,
+        gain: AUDIO_CONFIG.GANANCIA_ESCALA
+      });
+    }, idx * AUDIO_CONFIG.PAUSA_ESCALA * 1000);
+
+    escalaFinalTimers.push(timerId);
+  });
+
+  const limpiarActivoTimer = window.setTimeout(() => {
+    $$('.win-scale-note').forEach(note => note.classList.remove('is-active'));
+    $$('.win-scale-foundation').forEach(card => card.classList.remove('is-playing'));
+  }, (NOTAS.length * AUDIO_CONFIG.PAUSA_ESCALA * 1000) + 260);
+
+  escalaFinalTimers.push(limpiarActivoTimer);
 }
 
 function limpiarSeleccion() {
@@ -519,6 +682,7 @@ function crearEscenarioInicial() {
 
 function nuevaPartida() {
   cancelarArrastre();
+  limpiarTimersEscalaFinal();
 
   if (partidaRegistrada && !partidaGanada && movimientos > 0) {
     stats.currentStreak = 0;
@@ -745,6 +909,7 @@ function moverDesdeOrigenAFunda(origen, fi, opts = {}) {
   registrarMovimiento();
   const movidas = extraerCartasDesdeOrigen(origen);
   fundas[fi].push(movidas[0]);
+  tocarCartaSubidaAFunda(movidas[0], fi);
   sumarPuntos(PUNTAJES.MOVER_FUNDA);
   verificarVictoria();
   return true;
@@ -852,6 +1017,7 @@ function verificarVictoria() {
     actualizarOverlayVictoria();
     const win = getEl('win');
     if (win) win.classList.remove('oculto');
+    reproducirEscalaCromaticaFinal();
   }, 320);
 }
 
@@ -1238,6 +1404,9 @@ function initEventos() {
   const ayudaBtn = getEl('ayuda-btn');
   const reglasBtn = getEl('reglas-btn');
   const modoPill = getEl('modo-pill');
+
+  document.addEventListener('pointerdown', desbloquearAudio, { passive: true });
+  document.addEventListener('keydown', desbloquearAudio);
 
   mazoEl?.addEventListener('click', onClickMazo);
   mazoEl?.addEventListener('keydown', event => onKeyActivate(event, onClickMazo));
