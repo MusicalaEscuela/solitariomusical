@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Solitario Musical Cromático | Musicala</title>
   <meta
     name="description"
@@ -70,8 +70,11 @@
 
       <article class="hud-card">
         <span class="hud-label">Victorias</span>
-        <strong id="partidas-ganadas" class="hud-value">0</strong>
-        <small class="hud-hint">Acumuladas</small>
+        <div class="hud-value-row">
+          <strong id="partidas-ganadas" class="hud-value">0</strong>
+          <span id="porcentaje-victorias" class="hud-pct" title="Porcentaje de partidas ganadas">—</span>
+        </div>
+        <small class="hud-hint">Acumuladas · % ganadas</small>
       </article>
 
       <article class="hud-card">
@@ -102,8 +105,8 @@
     <main class="table-shell" aria-label="Área principal del juego">
       <section class="table-caption" aria-label="Indicaciones del juego">
         <p>
-          Arrastra o toca cartas para moverlas. También puedes bajar otra vez al
-          tablero la carta superior de cada fundación.
+          Arrastra o toca cartas para moverlas. Doble toque envía una carta a su
+          fundación. También puedes bajar al tablero la carta superior de cada fundación.
         </p>
       </section>
 
@@ -196,13 +199,35 @@
 
     <footer class="action-bar" aria-label="Acciones principales">
       <button
-        id="nueva-btn"
+        id="auto-btn"
         type="button"
-        class="action-item action-item-primary"
-        aria-label="Iniciar una nueva partida"
-        title="Iniciar una nueva partida"
+        class="action-item action-item-auto"
+        aria-label="Completar automáticamente las fundaciones"
+        title="Subir todas las cartas a las fundaciones"
+        hidden
       >
-        Nuevo
+        ✨ Completar automáticamente
+      </button>
+
+      <button
+        id="deshacer-btn"
+        type="button"
+        class="action-item"
+        aria-label="Deshacer la última jugada"
+        title="Deshacer (Ctrl+Z)"
+        disabled
+      >
+        ↶ Deshacer
+      </button>
+
+      <button
+        id="pista-btn"
+        type="button"
+        class="action-item"
+        aria-label="Mostrar una pista"
+        title="Señalar una jugada posible"
+      >
+        💡 Pista
       </button>
 
       <button
@@ -216,9 +241,31 @@
       </button>
 
       <button
+        id="nueva-btn"
+        type="button"
+        class="action-item action-item-primary"
+        aria-label="Iniciar una nueva partida"
+        title="Nueva partida con un reparto distinto"
+      >
+        Nueva partida
+      </button>
+    </footer>
+
+    <div class="action-bar-secondary" aria-label="Más acciones">
+      <button
+        id="reiniciar-btn"
+        type="button"
+        class="action-item action-item-quiet"
+        aria-label="Reiniciar esta partida con el mismo reparto"
+        title="Volver al reparto inicial de esta partida"
+      >
+        ⟲ Reiniciar esta partida
+      </button>
+
+      <button
         id="reglas-btn"
         type="button"
-        class="action-item"
+        class="action-item action-item-quiet"
         aria-label="Ver reglas del juego"
         title="Ver reglas"
       >
@@ -228,7 +275,7 @@
       <button
         id="ayuda-btn"
         type="button"
-        class="action-item"
+        class="action-item action-item-quiet"
         aria-label="Mostrar ayuda rápida"
         title="Cómo mover"
         style="display:none"
@@ -239,13 +286,13 @@
       <button
         id="reset-stats-btn"
         type="button"
-        class="action-item"
+        class="action-item action-item-quiet"
         aria-label="Reiniciar historial guardado"
         title="Borrar puntajes y estadísticas guardadas"
       >
         Reiniciar historial
       </button>
-    </footer>
+    </div>
   </div>
 
   <!-- ═══════════════════════════════════════════════
@@ -539,11 +586,11 @@
   >
     <div id="game-over-panel">
       <div class="game-over-icon" aria-hidden="true">♭</div>
-      <p class="game-over-kicker">Fin de la partida</p>
-      <h2 id="game-over-title">Game over</h2>
+      <p class="game-over-kicker">Un respiro en la partitura</p>
+      <h2 id="game-over-title">🎵 La melodía llegó a un silencio…</h2>
 
       <p class="game-over-msg">
-        Ya no quedan movimientos posibles, ni en el tablero ni revisando el ciclo completo del mazo y el descarte.
+        No quedan movimientos que permitan continuar esta partida.
       </p>
 
       <div class="game-over-stats" aria-label="Resumen de la partida perdida">
@@ -561,14 +608,32 @@
         </div>
       </div>
 
-      <button
-        id="game-over-again-btn"
-        type="button"
-        class="action-item action-item-primary action-item-wide"
-        aria-label="Iniciar una nueva partida"
-      >
-        Nueva partida
-      </button>
+      <div class="game-over-actions">
+        <button
+          id="game-over-again-btn"
+          type="button"
+          class="action-item action-item-primary action-item-wide"
+          aria-label="Iniciar una nueva partida"
+        >
+          Nueva partida
+        </button>
+        <button
+          id="game-over-restart-btn"
+          type="button"
+          class="action-item action-item-light action-item-wide"
+          aria-label="Reiniciar esta partida con el mismo reparto"
+        >
+          Reiniciar esta partida
+        </button>
+        <button
+          id="game-over-undo-btn"
+          type="button"
+          class="action-item action-item-quiet-light action-item-wide"
+          aria-label="Deshacer la última jugada"
+        >
+          ↶ Deshacer última jugada
+        </button>
+      </div>
     </div>
   </div>
 

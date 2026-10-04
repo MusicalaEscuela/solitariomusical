@@ -18,11 +18,31 @@ const AUDIO_CONFIG = {
   GANANCIA_ESCALA: 0.065
 };
 
+// Timbres ligeros por familia (Web Audio, sin archivos). Cada capa es un oscilador.
+const TIMBRES = {
+  teclas: {
+    capas: [{ tipo: 'triangle', mult: 1, vol: 1 }, { tipo: 'sine', mult: 2, vol: 0.2 }],
+    ataque: 0.012, duracion: 0.5, corte: 2800
+  },
+  percusion: {
+    capas: [{ tipo: 'sine', mult: 1, vol: 1 }, { tipo: 'triangle', mult: 3.9, vol: 0.26 }],
+    ataque: 0.004, duracion: 0.22, corte: 3600, caida: 1.04
+  },
+  cuerdas: {
+    capas: [{ tipo: 'sawtooth', mult: 1, vol: 0.42 }, { tipo: 'sawtooth', mult: 1, vol: 0.32, detune: 7 }],
+    ataque: 0.045, duracion: 0.56, corte: 1500, vibrato: { hz: 5.2, cents: 7 }
+  },
+  vientos: {
+    capas: [{ tipo: 'sine', mult: 1, vol: 1 }, { tipo: 'triangle', mult: 2, vol: 0.16 }],
+    ataque: 0.075, duracion: 0.46, corte: 2000, vibrato: { hz: 4.6, cents: 5 }
+  }
+};
+
 const PALOS = [
-  { sym: '🎹', tipo: 'oscuro', nombre: 'Teclas', clase: 'funda-teclas' },
-  { sym: '🥁', tipo: 'oscuro', nombre: 'Percusión', clase: 'funda-percusion' },
-  { sym: '🎸', tipo: 'claro', nombre: 'Cuerdas', clase: 'funda-cuerdas' },
-  { sym: '🎺', tipo: 'claro', nombre: 'Vientos', clase: 'funda-vientos' }
+  { sym: '🎹', tipo: 'oscuro', nombre: 'Teclas', clase: 'funda-teclas', timbre: 'teclas' },
+  { sym: '🥁', tipo: 'oscuro', nombre: 'Percusión', clase: 'funda-percusion', timbre: 'percusion' },
+  { sym: '🎸', tipo: 'claro', nombre: 'Cuerdas', clase: 'funda-cuerdas', timbre: 'cuerdas' },
+  { sym: '🎺', tipo: 'claro', nombre: 'Vientos', clase: 'funda-vientos', timbre: 'vientos' }
 ];
 
 const PUNTAJES = {
@@ -35,35 +55,41 @@ const PUNTAJES = {
 };
 
 const MENSAJES = {
-  SOLO_UNA_A_FUNDA: 'Solo una carta a la vez puede subir a la fundación.',
   MOV_INVALIDO: 'Ese movimiento no encaja.',
   SOLO_MAXIMA_VACIA: 'Solo Do↑ abre una columna vacía.',
   RECICLADO: 'El descarte volvió al mazo.',
-  GAME_OVER: 'No quedan movimientos posibles. Game over.',
   STATS_REINICIADAS: 'Historial reiniciado en este dispositivo.',
-  AYUDA: 'Arrastra cartas o tócalas. También puedes bajar la carta superior de una fundación al tablero.'
+  AYUDA: 'Arrastra cartas o tócalas. También puedes bajar la carta superior de una fundación al tablero.',
+  REVISA_MAZO: 'Revisa el mazo 🎴',
+  SIN_PISTA: 'No veo una jugada clara por ahora.',
+  CONFIRMAR_REINICIO: '¿Reiniciar esta partida con el mismo reparto? Perderás el avance actual.',
+  CONFIRMAR_MODO: 'Cambiar de modo inicia una partida nueva. ¿Continuar?'
 };
 
 const STORAGE_KEY = 'musicala_solitario_stats_v5';
 const MODE_STORAGE_KEY = 'musicala_solitario_modo_v1';
 
+// destinos: resaltado sutil de jugadas legales al seleccionar/arrastrar.
 const GAME_MODES = [
   {
     id: 'clasico',
     label: 'Clásico',
-    dealStrategy: 'random'
+    dealStrategy: 'random',
+    destinos: 'sutil'
   },
   {
     id: 'amable',
     label: 'Amable',
     dealStrategy: 'best_of',
-    attempts: 10
+    attempts: 10,
+    destinos: 'visible'
   },
   {
     id: 'experto',
     label: 'Experto',
     dealStrategy: 'worst_of',
-    attempts: 8
+    attempts: 8,
+    destinos: false
   }
 ];
 
@@ -78,7 +104,7 @@ const DEFAULT_STATS = {
 };
 
 const LAYOUT = {
-  MIN_BOARD_WIDTH: 320,
+  MIN_BOARD_WIDTH: 280,
   MIN_CARD_WIDTH: 52,
   MAX_CARD_WIDTH: 136,
   MIN_CARD_HEIGHT: 76,
@@ -93,6 +119,10 @@ const LAYOUT = {
 };
 
 const DRAG_THRESHOLD = 8;
+const DOBLE_TOQUE_MS = 380;
+const MAX_HISTORIAL = 100;
+const LIMITE_ESTADOS_ANALISIS = 5000;
+const REY = 12;
 
 let mazo = [];
 let descarte = [];
@@ -102,18 +132,37 @@ let sel = null;
 let currentModeId = cargarModo();
 
 let puntos = 0;
+let picoPuntaje = 0;
 let movimientos = 0;
 let partidaRegistrada = false;
 let partidaGanada = false;
 let partidaPerdida = false;
+let autoEnCurso = false;
 
-let inicioPartidaMs = Date.now();
+let repartoInicial = null;
+let historial = [];
+let versionEstado = 0;
+let analisisCache = null;
+
+let relojAcumuladoMs = 0;
+let relojDesdeMs = null;
 let relojTimer = null;
 let toastTimer = null;
 let resizeRaf = null;
 let resizeObserver = null;
+let firmaLayout = '';
+let layoutPendiente = false;
 let audioCtx = null;
 let escalaFinalTimers = [];
+let pistaTimers = [];
+let ayudaMazoTimer = null;
+let ultimaAyudaMazoMs = 0;
+let autoTimer = null;
+let ghostTimer = null;
+let ultimoToque = null;
+
+let hitos = nuevosHitos();
+let ultimoMicroMensajeMs = 0;
 
 let stats = cargarEstadisticas();
 
@@ -123,6 +172,13 @@ let OU = 24;
 
 let dragState = null;
 let dragClickSuppressUntil = 0;
+
+// Efectos visuales pendientes: se aplican tras el siguiente render.
+const fx = {
+  colocadas: new Set(),
+  volteadas: new Set(),
+  sacudir: new Set()
+};
 
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -159,6 +215,22 @@ function cartaToTexto(carta) {
   return `${NOTAS[carta.n]} ${PALOS[carta.p].sym}`;
 }
 
+function claveCarta(carta) {
+  return `${carta.p}-${carta.n}`;
+}
+
+function copiarCarta(carta) {
+  return { p: carta.p, n: carta.n, up: carta.up };
+}
+
+function bloqueado() {
+  return partidaPerdida || partidaGanada || autoEnCurso;
+}
+
+// ═══════════════════════════════════════════════════════
+// AUDIO
+// ═══════════════════════════════════════════════════════
+
 function getAudioContext() {
   if (audioCtx) return audioCtx;
 
@@ -177,6 +249,74 @@ function desbloquearAudio() {
   });
 }
 
+function tocarConTimbre(ctx, frecuencia, timbre, start, gainValue) {
+  const fin = start + timbre.duracion;
+  const gain = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  const osciladores = [];
+
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(timbre.corte, start);
+
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(gainValue, start + timbre.ataque);
+  gain.gain.exponentialRampToValueAtTime(0.0001, fin);
+
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+
+  let lfo = null;
+  let lfoGain = null;
+  if (timbre.vibrato) {
+    lfo = ctx.createOscillator();
+    lfoGain = ctx.createGain();
+    lfo.frequency.setValueAtTime(timbre.vibrato.hz, start);
+    lfoGain.gain.setValueAtTime(0.0001, start);
+    // El vibrato entra poco a poco, como en un instrumento real.
+    lfoGain.gain.linearRampToValueAtTime(timbre.vibrato.cents, start + timbre.duracion * 0.6);
+    lfo.connect(lfoGain);
+  }
+
+  timbre.capas.forEach(capa => {
+    const osc = ctx.createOscillator();
+    const capaGain = ctx.createGain();
+    const f = frecuencia * capa.mult;
+
+    osc.type = capa.tipo;
+    if (timbre.caida && capa.mult === 1) {
+      osc.frequency.setValueAtTime(f * timbre.caida, start);
+      osc.frequency.exponentialRampToValueAtTime(f, start + 0.03);
+    } else {
+      osc.frequency.setValueAtTime(f, start);
+    }
+    if (capa.detune) osc.detune.setValueAtTime(capa.detune, start);
+    if (lfoGain) lfoGain.connect(osc.detune);
+
+    capaGain.gain.setValueAtTime(capa.vol, start);
+    osc.connect(capaGain);
+    capaGain.connect(filter);
+    osc.start(start);
+    osc.stop(fin + 0.03);
+    osciladores.push(osc);
+  });
+
+  if (lfo) {
+    lfo.start(start);
+    lfo.stop(fin + 0.03);
+  }
+
+  // Libera los nodos cuando la nota termina.
+  osciladores[0].onended = () => {
+    try {
+      filter.disconnect();
+      gain.disconnect();
+      if (lfoGain) lfoGain.disconnect();
+    } catch {
+      // Nodo ya desconectado.
+    }
+  };
+}
+
 function tocarFrecuencia(frecuencia, opts = {}) {
   const ctx = getAudioContext();
   if (!ctx || !Number.isFinite(frecuencia)) return;
@@ -188,6 +328,11 @@ function tocarFrecuencia(frecuencia, opts = {}) {
   const gainValue = Math.max(0.01, Number(opts.gain || AUDIO_CONFIG.GANANCIA_NOTA));
   const start = ctx.currentTime + delay;
   const end = start + duration;
+
+  if (opts.timbre && TIMBRES[opts.timbre]) {
+    tocarConTimbre(ctx, frecuencia, TIMBRES[opts.timbre], start, gainValue);
+    return;
+  }
 
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -209,6 +354,14 @@ function tocarFrecuencia(frecuencia, opts = {}) {
 
   osc.start(start);
   osc.stop(end + 0.03);
+  osc.onended = () => {
+    try {
+      filter.disconnect();
+      gain.disconnect();
+    } catch {
+      // Nodo ya desconectado.
+    }
+  };
 }
 
 function tocarNota(notaIndex, opts = {}) {
@@ -220,7 +373,8 @@ function tocarCartaSubidaAFunda(carta, fi) {
   if (!carta) return;
   tocarNota(carta.n, {
     duration: AUDIO_CONFIG.DURACION_NOTA,
-    gain: AUDIO_CONFIG.GANANCIA_NOTA
+    gain: AUDIO_CONFIG.GANANCIA_NOTA,
+    timbre: PALOS[carta.p].timbre
   });
   resaltarFundaSonora(fi);
 }
@@ -307,12 +461,17 @@ function reproducirEscalaCromaticaFinal() {
   escalaFinalTimers.push(limpiarActivoTimer);
 }
 
+// ═══════════════════════════════════════════════════════
+// RELOJ, PUNTAJE Y ESTADÍSTICAS
+// ═══════════════════════════════════════════════════════
+
 function limpiarSeleccion() {
   sel = null;
 }
 
 function getElapsedSeconds() {
-  return Math.max(0, Math.floor((Date.now() - inicioPartidaMs) / 1000));
+  const extra = relojDesdeMs === null ? 0 : Date.now() - relojDesdeMs;
+  return Math.max(0, Math.floor((relojAcumuladoMs + extra) / 1000));
 }
 
 function getViewportHeight() {
@@ -339,13 +498,17 @@ function actualizarOverlayGameOver() {
 function sumarPuntos(valor) {
   puntos += valor;
   if (puntos < 0) puntos = 0;
+  if (puntos > picoPuntaje) picoPuntaje = puntos;
+  actualizarHud();
+}
 
-  if (puntos > stats.bestScore) {
-    stats.bestScore = puntos;
+// El récord se confirma al terminar o abandonar la partida (no en vivo),
+// para que Deshacer no pueda dejar un récord inflado.
+function confirmarRecord() {
+  if (picoPuntaje > stats.bestScore) {
+    stats.bestScore = picoPuntaje;
     persistirEstadisticas();
   }
-
-  actualizarHud();
 }
 
 function registrarInicioPartida() {
@@ -362,10 +525,17 @@ function registrarMovimiento() {
   actualizarHud();
 }
 
+function textoPorcentajeVictorias() {
+  if (!stats.gamesPlayed) return '—';
+  const pct = Math.min(100, Math.round((stats.gamesWon / stats.gamesPlayed) * 100));
+  return `${pct}%`;
+}
+
 function actualizarHud() {
   setText('puntos', formatearNumero(puntos));
-  setText('mejor-puntaje', formatearNumero(stats.bestScore));
+  setText('mejor-puntaje', formatearNumero(Math.max(stats.bestScore, picoPuntaje)));
   setText('partidas-ganadas', formatearNumero(stats.gamesWon));
+  setText('porcentaje-victorias', textoPorcentajeVictorias());
   setText('racha-actual', formatearNumero(stats.currentStreak));
   setText('movimientos', formatearNumero(movimientos));
   setText('tiempo', formatearTiempo(getElapsedSeconds()));
@@ -424,6 +594,8 @@ function persistirModo() {
 function actualizarModoUI() {
   const modo = getCurrentMode();
   setText('modo-actual', modo.label);
+  document.body.classList.toggle('dest-sutil', modo.destinos === 'sutil');
+  document.body.classList.toggle('dest-visible', modo.destinos === 'visible');
 }
 
 function cargarEstadisticas() {
@@ -453,19 +625,33 @@ function resetearEstadisticas() {
 
 function iniciarReloj() {
   detenerReloj();
-  inicioPartidaMs = Date.now();
+  relojAcumuladoMs = 0;
+  relojDesdeMs = Date.now();
+  relojTimer = window.setInterval(actualizarHud, 1000);
   actualizarHud();
-
-  relojTimer = window.setInterval(() => {
-    actualizarHud();
-  }, 1000);
 }
 
+function reanudarReloj() {
+  if (relojDesdeMs !== null) return;
+  relojDesdeMs = Date.now();
+  if (!relojTimer) relojTimer = window.setInterval(actualizarHud, 1000);
+}
+
+// Congela el tiempo: tras detener, getElapsedSeconds() ya no avanza.
 function detenerReloj() {
-  if (!relojTimer) return;
-  window.clearInterval(relojTimer);
-  relojTimer = null;
+  if (relojDesdeMs !== null) {
+    relojAcumuladoMs += Date.now() - relojDesdeMs;
+    relojDesdeMs = null;
+  }
+  if (relojTimer) {
+    window.clearInterval(relojTimer);
+    relojTimer = null;
+  }
 }
+
+// ═══════════════════════════════════════════════════════
+// LAYOUT
+// ═══════════════════════════════════════════════════════
 
 function getGrupoClasePorPalo(paloIndex) {
   return PALOS[paloIndex].tipo === 'oscuro' ? 'funda-oscura' : 'funda-clara';
@@ -494,11 +680,15 @@ function obtenerContenedorJuego() {
   return tableroEl?.parentElement || getEl('app') || document.body;
 }
 
+// Ancho útil real (sin padding del contenedor): las cartas se calculan sobre él.
 function obtenerAnchoDisponibleJuego() {
   const contenedor = obtenerContenedorJuego();
-  const rect = contenedor.getBoundingClientRect();
-  const width = Math.floor(rect.width || contenedor.clientWidth || (window.innerWidth - 16));
-  return Math.max(LAYOUT.MIN_BOARD_WIDTH, width - 4);
+  const estilo = window.getComputedStyle(contenedor);
+  const padding = (parseFloat(estilo.paddingLeft) || 0) + (parseFloat(estilo.paddingRight) || 0);
+  const width = Math.floor(
+    (contenedor.clientWidth || contenedor.getBoundingClientRect().width || (window.innerWidth - 16)) - padding
+  );
+  return Math.max(LAYOUT.MIN_BOARD_WIDTH, width);
 }
 
 function aplicarAnchoControladoTablero(boardWidth) {
@@ -552,19 +742,31 @@ function calcDims() {
   d.setProperty('--fb', `${clamp(Math.floor(cardWidth * 0.38), 18, 38)}px`);
 }
 
+function calcularFirmaLayout() {
+  return `${obtenerAnchoDisponibleJuego()}x${getViewportHeight()}`;
+}
+
 function programarRecalculoLayout() {
   // No recalcular mientras el usuario está arrastrando:
-  // el ResizeObserver o el resize de viewport destruiría el DOM del ghost.
-  if (dragState?.dragging) return;
+  // destruiría el DOM del ghost. Se pospone hasta soltar.
+  if (dragState?.dragging) {
+    layoutPendiente = true;
+    return;
+  }
 
   if (resizeRaf) {
     window.cancelAnimationFrame(resizeRaf);
   }
 
   resizeRaf = window.requestAnimationFrame(() => {
+    resizeRaf = null;
+    // Si el ancho/alto útil no cambió (p. ej. solo creció la altura del tablero
+    // tras una jugada) no hace falta rehacer todo: así no se cortan las animaciones.
+    const firma = calcularFirmaLayout();
+    if (firma === firmaLayout) return;
+    firmaLayout = firma;
     calcDims();
     renderizar();
-    resizeRaf = null;
   });
 }
 
@@ -580,11 +782,14 @@ function initLayoutObservers() {
     programarRecalculoLayout();
   });
 
-  if (tableroEl) resizeObserver.observe(tableroEl);
   if (shellEl) resizeObserver.observe(shellEl);
   const appEl = getEl('app');
   if (appEl) resizeObserver.observe(appEl);
 }
+
+// ═══════════════════════════════════════════════════════
+// REPARTO Y NUEVA PARTIDA
+// ═══════════════════════════════════════════════════════
 
 function crearBaraja() {
   const baraja = [];
@@ -689,48 +894,136 @@ function crearEscenarioInicial() {
   return mejor || repartirDesdeBaraja(mezclar(crearBaraja()));
 }
 
-function nuevaPartida() {
+function nuevosHitos() {
+  return {
+    escala: false,
+    primerFlip: false,
+    todoVisible: false,
+    crece: [false, false, false, false],
+    completa: [false, false, false, false]
+  };
+}
+
+// Limpia todo lo que sea transitorio (arrastre, pista, autocompletar, timers).
+function detenerActividadTransitoria() {
   cancelarArrastre();
   limpiarTimersEscalaFinal();
+  limpiarPista();
+  detenerAutocompletar();
+  window.clearTimeout(ayudaMazoTimer);
+  ayudaMazoTimer = null;
+  ultimoToque = null;
+  fx.colocadas.clear();
+  fx.volteadas.clear();
+  fx.sacudir.clear();
+}
 
-  if (partidaRegistrada && !partidaGanada && movimientos > 0) {
+function ocultarModalesFinales() {
+  getEl('win')?.classList.add('oculto');
+  getEl('game-over')?.classList.add('oculto');
+}
+
+function aplicarEscenario(mazoLocal, tableroLocal) {
+  mazo = mazoLocal.map(copiarCarta);
+  descarte = [];
+  fundas = [[], [], [], []];
+  tablero = tableroLocal.map(pila => pila.map(copiarCarta));
+}
+
+function reiniciarContadoresDePartida() {
+  limpiarSeleccion();
+  historial = [];
+  puntos = 0;
+  picoPuntaje = 0;
+  movimientos = 0;
+  partidaGanada = false;
+  partidaPerdida = false;
+  hitos = nuevosHitos();
+  ultimoMicroMensajeMs = 0;
+  versionEstado += 1;
+  ocultarModalesFinales();
+}
+
+function comenzarPartidaVisual() {
+  iniciarReloj();
+  renderizar();
+  verificarBloqueo();
+  programarAyudaMazo();
+}
+
+function nuevaPartida() {
+  detenerActividadTransitoria();
+  confirmarRecord();
+
+  if (partidaRegistrada && !partidaGanada) {
     stats.currentStreak = 0;
     persistirEstadisticas();
   }
 
   const escenario = crearEscenarioInicial();
+  repartoInicial = {
+    mazo: escenario.mazoLocal.map(copiarCarta),
+    tablero: escenario.tableroLocal.map(pila => pila.map(copiarCarta))
+  };
 
-  mazo = escenario.mazoLocal;
-  descarte = [];
-  fundas = escenario.fundasLocal;
-  tablero = escenario.tableroLocal;
-  limpiarSeleccion();
-
-  puntos = 0;
-  movimientos = 0;
+  aplicarEscenario(escenario.mazoLocal, escenario.tableroLocal);
   partidaRegistrada = false;
-  partidaGanada = false;
-  partidaPerdida = false;
-
-  const win = getEl('win');
-  if (win) win.classList.add('oculto');
-
-  const gameOver = getEl('game-over');
-  if (gameOver) gameOver.classList.add('oculto');
-
-  iniciarReloj();
-  renderizar();
-  verificarGameOver();
+  reiniciarContadoresDePartida();
+  comenzarPartidaVisual();
 }
 
-function puedeEnFunda(carta, fi) {
-  const funda = fundas[fi];
+// Vuelve exactamente al reparto inicial de la partida actual.
+// No cuenta como partida nueva: gamesPlayed no se vuelve a sumar.
+function reiniciarPartida(forzar = false) {
+  if (!repartoInicial) return;
+
+  const enCurso = !partidaGanada && !partidaPerdida && movimientos >= 5;
+  if (!forzar && enCurso && !window.confirm(MENSAJES.CONFIRMAR_REINICIO)) return;
+
+  detenerActividadTransitoria();
+  confirmarRecord();
+
+  // Si la partida estaba bloqueada, ese intento cuenta como perdido.
+  if (partidaPerdida) {
+    stats.currentStreak = 0;
+    stats.lastScore = puntos;
+    persistirEstadisticas();
+  }
+
+  aplicarEscenario(repartoInicial.mazo, repartoInicial.tablero);
+  reiniciarContadoresDePartida();
+  comenzarPartidaVisual();
+}
+
+// ═══════════════════════════════════════════════════════
+// REGLAS BÁSICAS
+// ═══════════════════════════════════════════════════════
+
+function puedeEnFundaDe(fundasRef, carta, fi) {
+  const funda = fundasRef[fi];
   if (!funda) return false;
 
   if (funda.length === 0) return carta.n === 0;
 
   const tope = funda[funda.length - 1];
   return carta.p === tope.p && carta.n === tope.n + 1;
+}
+
+function puedeEnFunda(carta, fi) {
+  return puedeEnFundaDe(fundas, carta, fi);
+}
+
+// Elige la fundación destino: para un Do, la de su propio palo si está libre.
+function elegirFundaDe(fundasRef, carta) {
+  if (carta.n === 0 && fundasRef[carta.p]?.length === 0) return carta.p;
+  for (let fi = 0; fi < fundasRef.length; fi += 1) {
+    if (puedeEnFundaDe(fundasRef, carta, fi)) return fi;
+  }
+  return -1;
+}
+
+function elegirFunda(carta) {
+  return elegirFundaDe(fundas, carta);
 }
 
 function puedeEnTablero(carta, col) {
@@ -749,7 +1042,9 @@ function puedeEnTablero(carta, col) {
 
 function voltearTope(pila) {
   if (pila.length > 0 && !pila[pila.length - 1].up) {
-    pila[pila.length - 1].up = true;
+    const carta = pila[pila.length - 1];
+    carta.up = true;
+    fx.volteadas.add(claveCarta(carta));
     sumarPuntos(PUNTAJES.VOLTEAR);
   }
 }
@@ -794,10 +1089,6 @@ function cartasDeOrigen(origen) {
   return null;
 }
 
-function cartasSel() {
-  return cartasDeOrigen(sel);
-}
-
 function extraerCartasDesdeOrigen(origen) {
   if (origen.zona === 'descarte') {
     return descarte.length ? [descarte.pop()] : [];
@@ -817,6 +1108,10 @@ function extraerCartasDesdeOrigen(origen) {
 
   return [];
 }
+
+// ═══════════════════════════════════════════════════════
+// TOASTS Y MICROMENSAJES
+// ═══════════════════════════════════════════════════════
 
 function asegurarToast() {
   let t = getEl('toast');
@@ -841,39 +1136,180 @@ function toast(msg) {
   }, msg.length > 42 ? 2600 : 1800);
 }
 
-function onClickMazo() {
-  if (partidaPerdida || partidaGanada) return;
+// Mensajes de personalidad: muy espaciados para no resultar invasivos.
+function microMensaje(texto) {
+  const ahora = Date.now();
+  if (ahora - ultimoMicroMensajeMs < 7000) return false;
+  ultimoMicroMensajeMs = ahora;
+  toast(texto);
+  return true;
+}
+
+function revisarHitos(info = {}) {
+  const candidatos = [];
+  const total = fundas.reduce((suma, f) => suma + f.length, 0);
+
+  fundas.forEach((pila, fi) => {
+    if (!pila.length) return;
+    const palo = PALOS[pila[0].p];
+
+    if (pila.length >= 13 && !hitos.completa[fi]) {
+      hitos.completa[fi] = true;
+      if (total < 52) candidatos.push(`${palo.sym} ${palo.nombre} completó su escala`);
+    } else if (pila.length >= 7 && !hitos.crece[fi]) {
+      hitos.crece[fi] = true;
+      candidatos.push(`${palo.sym} ${palo.nombre} sigue creciendo`);
+    }
+  });
+
+  if (total >= 4 && !hitos.escala) {
+    hitos.escala = true;
+    candidatos.push('🎵 La escala está tomando forma');
+  }
+
+  const hayOcultas = tablero.some(pila => pila.some(carta => !carta.up));
+  if (!hayOcultas && !hitos.todoVisible) {
+    hitos.todoVisible = true;
+    candidatos.push('✨ Todo el tablero está a la vista');
+  }
+
+  if (info.volteos > 0 && !hitos.primerFlip) {
+    hitos.primerFlip = true;
+    candidatos.push('✨ Nueva carta descubierta');
+  }
+
+  if (info.bloque >= 3) candidatos.push('🎶 Buen movimiento');
+
+  if (candidatos.length) microMensaje(candidatos[0]);
+}
+
+// ═══════════════════════════════════════════════════════
+// HISTORIAL / DESHACER
+// ═══════════════════════════════════════════════════════
+
+function capturarEstado() {
+  return {
+    mazo: mazo.map(copiarCarta),
+    descarte: descarte.map(copiarCarta),
+    fundas: fundas.map(f => f.map(copiarCarta)),
+    tablero: tablero.map(pila => pila.map(copiarCarta)),
+    puntos,
+    pico: picoPuntaje,
+    movimientos
+  };
+}
+
+function guardarEstado() {
+  historial.push(capturarEstado());
+  if (historial.length > MAX_HISTORIAL) historial.shift();
+}
+
+function deshacer() {
+  if (partidaGanada || autoEnCurso) return;
+  const snap = historial.pop();
+  if (!snap) return;
+
+  cancelarArrastre();
+  limpiarPista();
   limpiarSeleccion();
+  fx.colocadas.clear();
+  fx.volteadas.clear();
+  fx.sacudir.clear();
+
+  mazo = snap.mazo;
+  descarte = snap.descarte;
+  fundas = snap.fundas;
+  tablero = snap.tablero;
+  puntos = snap.puntos;
+  picoPuntaje = snap.pico;
+  movimientos = snap.movimientos;
+  versionEstado += 1;
+
+  if (partidaPerdida) {
+    partidaPerdida = false;
+    getEl('game-over')?.classList.add('oculto');
+    reanudarReloj();
+  }
+
+  renderizar();
+  verificarBloqueo();
+  programarAyudaMazo();
+}
+
+// ═══════════════════════════════════════════════════════
+// ACCIONES DE JUEGO
+// ═══════════════════════════════════════════════════════
+
+function despuesDeJugada(info = {}) {
+  versionEstado += 1;
+  limpiarPista();
+  renderizar();
+  revisarHitos(info);
+  if (!verificarVictoria()) verificarBloqueo();
+  programarAyudaMazo();
+}
+
+function rechazarMovimiento(origen, mensaje) {
+  const cartas = cartasDeOrigen(origen);
+  if (cartas) cartas.forEach(carta => fx.sacudir.add(claveCarta(carta)));
+  if (mensaje) toast(mensaje);
+}
+
+function onClickMazo() {
+  if (bloqueado()) return;
+  limpiarSeleccion();
+  ultimoToque = null;
 
   if (mazo.length === 0) {
     if (descarte.length === 0) {
       renderizar();
-      verificarGameOver();
       return;
     }
 
+    guardarEstado();
     registrarMovimiento();
     mazo = descarte.reverse().map(carta => ({ ...carta, up: false }));
     descarte = [];
     sumarPuntos(-PUNTAJES.RECICLAR);
     toast(MENSAJES.RECICLADO);
-    renderizar();
-    verificarGameOver();
+    despuesDeJugada();
     return;
   }
 
+  guardarEstado();
   registrarMovimiento();
   const carta = mazo.pop();
   carta.up = true;
   descarte.push(carta);
   sumarPuntos(PUNTAJES.ROBAR_MAZO);
-  renderizar();
-  verificarGameOver();
+  despuesDeJugada();
+}
+
+function esDobleToque(carta) {
+  const clave = claveCarta(carta);
+  const ahora = performance.now();
+  const es = ultimoToque && ultimoToque.clave === clave && ahora - ultimoToque.t < DOBLE_TOQUE_MS;
+  ultimoToque = es ? null : { clave, t: ahora };
+  return es;
+}
+
+function intentarEnviarAFunda(origen) {
+  const cartas = cartasDeOrigen(origen);
+  if (!cartas || cartas.length !== 1) return false;
+
+  const fi = elegirFunda(cartas[0]);
+  if (fi < 0) return false;
+  return moverDesdeOrigenAFunda(origen, fi, { silencioso: true });
 }
 
 function onClickDescarte() {
-  if (partidaPerdida || partidaGanada) return;
+  if (bloqueado()) return;
   if (!descarte.length) return;
+
+  // Doble clic / doble toque: sube a la fundación si es legal.
+  if (esDobleToque(descarte[descarte.length - 1]) && intentarEnviarAFunda({ zona: 'descarte' })) {
+    return;
+  }
 
   if (haySeleccionEnDescarte()) {
     limpiarSeleccion();
@@ -891,53 +1327,64 @@ function onClickDescarte() {
 
 function moverDesdeOrigenATablero(origen, col, opts = {}) {
   const cartas = cartasDeOrigen(origen);
-  if (!cartas || !puedeEnTablero(cartas[0], col)) {
-    if (!opts.silencioso) toast(tablero[col].length === 0 ? MENSAJES.SOLO_MAXIMA_VACIA : MENSAJES.MOV_INVALIDO);
-    return false;
-  }
+  if (!cartas) return false;
 
   if (origen.zona === 'tablero' && origen.col === col) return false;
 
+  if (!puedeEnTablero(cartas[0], col)) {
+    if (opts.sacudir) {
+      const vacia = tablero[col].length === 0;
+      rechazarMovimiento(origen, !opts.silencioso && vacia ? MENSAJES.SOLO_MAXIMA_VACIA : null);
+    }
+    return false;
+  }
+
+  guardarEstado();
   registrarMovimiento();
+  fx.volteadas.clear();
   const movidas = extraerCartasDesdeOrigen(origen);
+  const volteos = fx.volteadas.size;
   tablero[col].push(...movidas);
+  movidas.forEach(carta => fx.colocadas.add(claveCarta(carta)));
 
   if (origen.zona === 'funda') {
-    sumarPuntos(PUNTAJES.DEVOLVER_FUNDA);
+    // Bajar de fundación cuesta puntos (como indican las reglas).
+    sumarPuntos(-PUNTAJES.DEVOLVER_FUNDA);
   } else {
     sumarPuntos(PUNTAJES.MOVER_TABLERO);
   }
 
-  verificarGameOver();
+  limpiarSeleccion();
+  ultimoToque = null;
+  despuesDeJugada({ volteos, bloque: movidas.length });
   return true;
 }
 
 function moverDesdeOrigenAFunda(origen, fi, opts = {}) {
   const cartas = cartasDeOrigen(origen);
 
-  if (!cartas || cartas.length !== 1) {
-    if (!opts.silencioso) toast(MENSAJES.SOLO_UNA_A_FUNDA);
+  if (!cartas || cartas.length !== 1 || !puedeEnFunda(cartas[0], fi)) {
+    if (opts.sacudir) rechazarMovimiento(origen, null);
     return false;
   }
 
-  const carta = cartas[0];
-  if (!puedeEnFunda(carta, fi)) {
-    if (!opts.silencioso) toast(MENSAJES.MOV_INVALIDO);
-    return false;
-  }
-
+  guardarEstado();
   registrarMovimiento();
+  fx.volteadas.clear();
   const movidas = extraerCartasDesdeOrigen(origen);
+  const volteos = fx.volteadas.size;
   fundas[fi].push(movidas[0]);
   tocarCartaSubidaAFunda(movidas[0], fi);
   sumarPuntos(PUNTAJES.MOVER_FUNDA);
-  verificarVictoria();
-  verificarGameOver();
+
+  limpiarSeleccion();
+  ultimoToque = null;
+  despuesDeJugada({ volteos });
   return true;
 }
 
 function onClickFunda(fi) {
-  if (partidaPerdida || partidaGanada) return;
+  if (bloqueado()) return;
   const pila = fundas[fi];
 
   if (!sel) {
@@ -953,11 +1400,7 @@ function onClickFunda(fi) {
     return;
   }
 
-  if (moverDesdeOrigenAFunda(sel, fi)) {
-    limpiarSeleccion();
-    renderizar();
-    return;
-  }
+  if (moverDesdeOrigenAFunda(sel, fi, { sacudir: true })) return;
 
   if (pila.length) {
     sel = { zona: 'funda', fi };
@@ -968,7 +1411,7 @@ function onClickFunda(fi) {
 }
 
 function onClickCarta(col, idx) {
-  if (partidaPerdida || partidaGanada) return;
+  if (bloqueado()) return;
   const pila = tablero[col];
   if (!pila || idx < 0 || idx >= pila.length) return;
 
@@ -977,6 +1420,11 @@ function onClickCarta(col, idx) {
     limpiarSeleccion();
     renderizar();
     return;
+  }
+
+  // Doble clic / doble toque sobre la carta superior: a la fundación si es legal.
+  if (idx === pila.length - 1 && esDobleToque(carta) && elegirFunda(carta) >= 0) {
+    if (intentarEnviarAFunda({ zona: 'tablero', col, idx })) return;
   }
 
   if (sel) {
@@ -991,11 +1439,7 @@ function onClickCarta(col, idx) {
       return;
     }
 
-    if (moverDesdeOrigenATablero(sel, col, { silencioso: true })) {
-      limpiarSeleccion();
-      renderizar();
-      return;
-    }
+    if (moverDesdeOrigenATablero(sel, col, { silencioso: true })) return;
   }
 
   sel = { zona: 'tablero', col, idx };
@@ -1003,14 +1447,10 @@ function onClickCarta(col, idx) {
 }
 
 function onClickColVacia(col) {
-  if (partidaPerdida || partidaGanada) return;
+  if (bloqueado()) return;
   if (!sel) return;
 
-  if (moverDesdeOrigenATablero(sel, col)) {
-    limpiarSeleccion();
-    renderizar();
-    return;
-  }
+  if (moverDesdeOrigenATablero(sel, col, { sacudir: true })) return;
 
   limpiarSeleccion();
   renderizar();
@@ -1018,11 +1458,13 @@ function onClickColVacia(col) {
 
 function verificarVictoria() {
   const gano = fundas.every(funda => funda.length === 13);
-  if (!gano || partidaGanada) return;
+  if (!gano || partidaGanada) return partidaGanada;
 
   registrarInicioPartida();
   partidaGanada = true;
+  autoEnCurso = false;
   detenerReloj();
+  limpiarSeleccion();
 
   const tiempoFinal = getElapsedSeconds();
   stats.gamesWon += 1;
@@ -1034,109 +1476,558 @@ function verificarVictoria() {
     stats.bestTimeSeconds = tiempoFinal;
   }
 
+  confirmarRecord();
   persistirEstadisticas();
   actualizarHud();
+  actualizarControles();
 
   setTimeout(() => {
+    if (!partidaGanada) return;
     actualizarOverlayVictoria();
     const win = getEl('win');
     if (win) win.classList.remove('oculto');
     reproducirEscalaCromaticaFinal();
   }, 320);
+
+  return true;
 }
 
-function cartaPuedeIrAFunda(carta) {
-  if (!carta) return false;
-  return fundas.some((_, fi) => puedeEnFunda(carta, fi));
-}
+// ═══════════════════════════════════════════════════════
+// MOTOR DE ANÁLISIS (bloqueo, pistas)
+//
+// Una carta se representa por su id = palo*13 + nota.
+// El análisis distingue tres tipos de jugada:
+//  - PROGRESO: voltea una carta oculta, sube a una fundación (neto) o
+//    coloca una carta del mazo/descarte (irreversible y finito).
+//  - NEUTRA: reordena cartas ya visibles (tablero↔tablero sin voltear,
+//    fundación→tablero). Es reversible, así que nunca cuenta por sí sola
+//    como "movimiento disponible": solo sirve si lleva a un progreso.
+// Se hace una búsqueda en anchura sobre las jugadas neutras; si ningún
+// estado alcanzable ofrece progreso, la partida está realmente bloqueada.
+// ═══════════════════════════════════════════════════════
 
-function cartaPuedeIrATablero(carta, colOrigen = null) {
-  if (!carta) return false;
+const idDe = carta => carta.p * 13 + carta.n;
+const nDe = id => id % 13;
+const pDe = id => Math.floor(id / 13);
+const tipoDe = id => (PALOS[pDe(id)].tipo === 'oscuro' ? 0 : 1);
 
-  return tablero.some((_, col) => {
-    if (colOrigen !== null && col === colOrigen) return false;
-    return puedeEnTablero(carta, col);
+function crearEstadoAnalisis() {
+  const ups = [];
+  const downs = [];
+
+  tablero.forEach(pila => {
+    let ocultas = 0;
+    while (ocultas < pila.length && !pila[ocultas].up) ocultas += 1;
+    downs.push(ocultas);
+    ups.push(pila.slice(ocultas).map(idDe));
   });
+
+  const fund = fundas.map(f => (f.length ? idDe(f[f.length - 1]) : -1));
+  return { ups, downs, fund };
 }
 
-function hayMovimientoDesdeDescarte() {
-  const carta = descarte[descarte.length - 1];
-  return cartaPuedeIrAFunda(carta) || cartaPuedeIrATablero(carta);
+function puedeFundaId(id, tope) {
+  if (tope < 0) return nDe(id) === 0;
+  return pDe(tope) === pDe(id) && nDe(id) === nDe(tope) + 1;
 }
 
-function hayMovimientoDesdeTablero() {
-  for (let col = 0; col < tablero.length; col += 1) {
-    const pila = tablero[col];
-    if (!pila?.length) continue;
+function puedeTableroId(id, U, D) {
+  if (!U.length) return D === 0 && nDe(id) === REY;
+  const tope = U[U.length - 1];
+  return tipoDe(id) !== tipoDe(tope) && nDe(id) === nDe(tope) - 1;
+}
 
-    for (let idx = 0; idx < pila.length; idx += 1) {
-      const carta = pila[idx];
-      if (!carta?.up) continue;
+function elegirFundaId(id, fund) {
+  if (nDe(id) === 0 && fund[pDe(id)] < 0) return pDe(id);
+  for (let fi = 0; fi < fund.length; fi += 1) {
+    if (puedeFundaId(id, fund[fi])) return fi;
+  }
+  return -1;
+}
 
-      const cartasMovidas = pila.slice(idx);
+function totalFundas(fund) {
+  return fund.reduce((suma, tope) => suma + (tope < 0 ? 0 : nDe(tope) + 1), 0);
+}
 
-      if (cartaPuedeIrATablero(carta, col)) return true;
+function claveEstado(est) {
+  return `${est.ups.map(u => u.join('.')).join('|')}#${est.fund.join('.')}`;
+}
 
-      if (cartasMovidas.length === 1 && cartaPuedeIrAFunda(carta)) {
-        return true;
+function hayReyDisponible(est, cand) {
+  return (
+    cand.some(id => nDe(id) === REY) ||
+    est.ups.some((U, c) => est.downs[c] > 0 && U.length && nDe(U[0]) === REY)
+  );
+}
+
+// Jugadas que hacen avanzar la partida desde un estado.
+// cat: 1 voltea carta · 2 fundación · 3 libera columna · 4 desde mazo/descarte
+function listarProgreso(est, cand, totalInicial) {
+  const res = [];
+  const { ups, downs, fund } = est;
+  const total = totalFundas(fund);
+
+  for (let c = 0; c < ups.length; c += 1) {
+    const U = ups[c];
+    if (!U.length) continue;
+
+    for (let i = 0; i < U.length; i += 1) {
+      const id = U[i];
+      const voltea = i === 0 && downs[c] > 0;
+
+      if (voltea) {
+        for (let j = 0; j < ups.length; j += 1) {
+          if (j !== c && puedeTableroId(id, ups[j], downs[j])) {
+            res.push({ tipo: 'tt', col: c, i, dest: j, cat: 1, peso: downs[c] });
+          }
+        }
+      }
+
+      if (i === U.length - 1) {
+        const fi = elegirFundaId(id, fund);
+        if (fi >= 0) {
+          if (voltea) res.push({ tipo: 'tf', col: c, i, fi, cat: 1, peso: downs[c] });
+          else if (total >= totalInicial) res.push({ tipo: 'tf', col: c, i, fi, cat: 2, peso: 0 });
+        }
       }
     }
   }
 
-  return false;
-}
+  // Liberar una columna solo es progreso si hay un Do↑ esperando para usarla.
+  const hayVacia = ups.some((U, c) => !U.length && downs[c] === 0);
+  if (!hayVacia && hayReyDisponible(est, cand)) {
+    for (let c = 0; c < ups.length; c += 1) {
+      const U = ups[c];
+      if (!U.length || downs[c] > 0) continue;
+      for (let j = 0; j < ups.length; j += 1) {
+        if (j !== c && ups[j].length && puedeTableroId(U[0], ups[j], downs[j])) {
+          res.push({ tipo: 'tt', col: c, i: 0, dest: j, cat: 3, peso: U.length });
+        }
+      }
+    }
+  }
 
-function hayMovimientoDesdeFundas() {
-  return fundas.some(funda => {
-    const carta = funda[funda.length - 1];
-    return cartaPuedeIrATablero(carta);
+  cand.forEach(id => {
+    const fi = elegirFundaId(id, fund);
+    if (fi >= 0) res.push({ tipo: 'sf', id, fi, cat: 2, peso: 0 });
+    for (let j = 0; j < ups.length; j += 1) {
+      if (puedeTableroId(id, ups[j], downs[j])) {
+        res.push({ tipo: 'st', id, dest: j, cat: 4, peso: 0 });
+      }
+    }
   });
+
+  return res;
 }
 
-function hayMovimientoFuturoDesdeMazoODescarte() {
-  // Con robo de una carta y reciclaje del descarte, cualquier carta del mazo
-  // o del descarte puede volver a quedar visible sin cambiar el tablero.
-  const cartasAccesibles = [...mazo, ...descarte];
-  return cartasAccesibles.some(carta => cartaPuedeIrAFunda(carta) || cartaPuedeIrATablero(carta));
+// Jugadas reversibles que solo reordenan lo que ya se ve.
+function listarNeutros(est, permitirFunda, totalInicial) {
+  const res = [];
+  const { ups, downs, fund } = est;
+
+  for (let c = 0; c < ups.length; c += 1) {
+    const U = ups[c];
+    for (let i = 0; i < U.length; i += 1) {
+      if (i === 0 && downs[c] > 0) continue; // eso voltearía una carta: es progreso
+      for (let j = 0; j < ups.length; j += 1) {
+        // Mover a una columna vacía solo sería cambiar de sitio: sin sentido.
+        if (j === c || !ups[j].length) continue;
+        if (puedeTableroId(U[i], ups[j], downs[j])) res.push({ tipo: 'tt', col: c, i, dest: j });
+      }
+    }
+  }
+
+  if (permitirFunda) {
+    const total = totalFundas(fund);
+
+    // Devolver al tablero una carta que antes se había bajado de la fundación.
+    if (total < totalInicial) {
+      for (let c = 0; c < ups.length; c += 1) {
+        const U = ups[c];
+        if (!U.length || (U.length === 1 && downs[c] > 0)) continue;
+        const fi = elegirFundaId(U[U.length - 1], fund);
+        if (fi >= 0) res.push({ tipo: 'tf', col: c, i: U.length - 1, fi });
+      }
+    }
+
+    for (let fi = 0; fi < fund.length; fi += 1) {
+      if (fund[fi] < 0) continue;
+      for (let j = 0; j < ups.length; j += 1) {
+        if (puedeTableroId(fund[fi], ups[j], downs[j])) res.push({ tipo: 'ft', fi, dest: j });
+      }
+    }
+  }
+
+  return res;
 }
 
-function hayMovimientosDisponibles() {
-  return (
-    hayMovimientoDesdeDescarte() ||
-    hayMovimientoDesdeTablero() ||
-    hayMovimientoDesdeFundas() ||
-    hayMovimientoFuturoDesdeMazoODescarte()
-  );
+function aplicarNeutro(est, mv) {
+  const ups = est.ups.map(u => u.slice());
+  const fund = est.fund.slice();
+
+  if (mv.tipo === 'tt') {
+    const corrida = ups[mv.col].splice(mv.i);
+    ups[mv.dest].push(...corrida);
+  } else if (mv.tipo === 'tf') {
+    const id = ups[mv.col].pop();
+    fund[mv.fi] = id;
+  } else if (mv.tipo === 'ft') {
+    const id = fund[mv.fi];
+    fund[mv.fi] = nDe(id) === 0 ? -1 : id - 1;
+    ups[mv.dest].push(id);
+  }
+
+  return { ups, downs: est.downs, fund };
 }
 
-function mostrarGameOver() {
+function mejorJugada(lista) {
+  return lista.reduce((mejor, mv) => {
+    if (!mejor) return mv;
+    if (mv.cat !== mejor.cat) return mv.cat < mejor.cat ? mv : mejor;
+    return mv.peso > mejor.peso ? mv : mejor;
+  }, null);
+}
+
+// Búsqueda en anchura. Devuelve { jugada } con la primera jugada a hacer,
+// { limite: true } si se agotó el presupuesto, o null si no hay progreso posible.
+function buscarProgreso(cand, permitirFunda) {
+  const inicial = crearEstadoAnalisis();
+  const totalInicial = totalFundas(inicial.fund);
+  const visitados = new Set([claveEstado(inicial)]);
+  const cola = [{ est: inicial, primera: null }];
+
+  for (let cabeza = 0; cabeza < cola.length; cabeza += 1) {
+    const { est, primera } = cola[cabeza];
+    const progreso = listarProgreso(est, cand, totalInicial);
+
+    if (progreso.length) {
+      return { jugada: primera || mejorJugada(progreso) };
+    }
+
+    if (visitados.size > LIMITE_ESTADOS_ANALISIS) return { limite: true };
+
+    listarNeutros(est, permitirFunda, totalInicial).forEach(mv => {
+      const nuevo = aplicarNeutro(est, mv);
+      const clave = claveEstado(nuevo);
+      if (visitados.has(clave)) return;
+      visitados.add(clave);
+      cola.push({ est: nuevo, primera: primera || mv });
+    });
+  }
+
+  return null;
+}
+
+function calcularAnalisis() {
+  const tope = descarte.length ? [idDe(descarte[descarte.length - 1])] : [];
+  const todas = [...mazo, ...descarte].map(idDe);
+  let incierto = false;
+
+  // A) Hay progreso con lo que se ve ahora mismo (incluye la carta del descarte).
+  for (const permitirFunda of [false, true]) {
+    const r = buscarProgreso(tope, permitirFunda);
+    if (r?.limite) incierto = true;
+    else if (r) return { estado: 'progreso', jugada: r.jugada };
+  }
+
+  // B) No se ve nada, pero revisando el mazo aparece una jugada.
+  if (todas.length > tope.length) {
+    for (const permitirFunda of [false, true]) {
+      const r = buscarProgreso(todas, permitirFunda);
+      if (r?.limite) incierto = true;
+      else if (r) return { estado: 'mazo', jugada: r.jugada };
+    }
+  }
+
+  // C) Nada permite avanzar. Si el análisis fue truncado preferimos no condenar la partida.
+  return { estado: incierto ? 'incierto' : 'bloqueada' };
+}
+
+function analizar() {
+  if (analisisCache && analisisCache.version === versionEstado) return analisisCache.res;
+  const res = calcularAnalisis();
+  analisisCache = { version: versionEstado, res };
+  return res;
+}
+
+// ═══════════════════════════════════════════════════════
+// PARTIDA BLOQUEADA
+// ═══════════════════════════════════════════════════════
+
+function mostrarBloqueo() {
   if (partidaGanada || partidaPerdida) return;
 
   partidaPerdida = true;
   limpiarSeleccion();
   cancelarArrastre();
+  limpiarPista();
   detenerReloj();
+  window.clearTimeout(ayudaMazoTimer);
+  ayudaMazoTimer = null;
 
-  if (movimientos > 0) {
-    registrarInicioPartida();
-    stats.currentStreak = 0;
+  if (partidaRegistrada) {
+    confirmarRecord();
     stats.lastScore = puntos;
     persistirEstadisticas();
   }
 
   actualizarHud();
   actualizarOverlayGameOver();
+  actualizarControles();
+  renderizar();
 
   const gameOver = getEl('game-over');
-  if (gameOver) gameOver.classList.remove('oculto');
-  toast(MENSAJES.GAME_OVER);
+  if (gameOver) {
+    gameOver.classList.remove('oculto');
+    getEl('game-over-again-btn')?.focus({ preventScroll: true });
+  }
 }
 
-function verificarGameOver() {
-  if (partidaGanada || partidaPerdida) return;
-  if (hayMovimientosDisponibles()) return;
-  mostrarGameOver();
+function verificarBloqueo() {
+  if (partidaGanada || partidaPerdida || autoEnCurso) return;
+  if (analizar().estado === 'bloqueada') mostrarBloqueo();
 }
+
+// Ayuda discreta: si no hay jugadas visibles pero el mazo aún ofrece algo,
+// y el jugador lleva un rato quieto, se le recuerda revisar el mazo (máx. 1 vez por minuto).
+function programarAyudaMazo() {
+  window.clearTimeout(ayudaMazoTimer);
+  ayudaMazoTimer = null;
+  if (bloqueado()) return;
+  if (analizar().estado !== 'mazo') return;
+
+  ayudaMazoTimer = window.setTimeout(() => {
+    ayudaMazoTimer = null;
+    const intro = getEl('intro');
+    if (bloqueado() || (intro && !intro.classList.contains('oculto'))) return;
+    if (Date.now() - ultimaAyudaMazoMs < 60000) return;
+    ultimaAyudaMazoMs = Date.now();
+    pulsarMazo();
+    toast(MENSAJES.REVISA_MAZO);
+  }, 7000);
+}
+
+// ═══════════════════════════════════════════════════════
+// PISTAS
+// ═══════════════════════════════════════════════════════
+
+function limpiarPista() {
+  pistaTimers.forEach(timerId => window.clearTimeout(timerId));
+  pistaTimers = [];
+  $$('.pista-origen, .pista-destino').forEach(el => {
+    el.classList.remove('pista-origen', 'pista-destino');
+  });
+}
+
+function pulsarMazo() {
+  const mazoEl = getEl('mazo');
+  if (!mazoEl) return;
+  mazoEl.classList.add('pista-destino');
+  pistaTimers.push(window.setTimeout(() => mazoEl.classList.remove('pista-destino'), 2600));
+}
+
+function contarOcultas(pila) {
+  let ocultas = 0;
+  while (ocultas < pila.length && !pila[ocultas].up) ocultas += 1;
+  return ocultas;
+}
+
+// Traduce una jugada del motor a elementos de la interfaz.
+function jugadaAInterfaz(mv) {
+  if (mv.tipo === 'tt') {
+    return {
+      origen: { zona: 'tablero', col: mv.col, idx: contarOcultas(tablero[mv.col]) + mv.i },
+      destino: { zona: 'tablero', col: mv.dest }
+    };
+  }
+  if (mv.tipo === 'tf') {
+    return {
+      origen: { zona: 'tablero', col: mv.col, idx: contarOcultas(tablero[mv.col]) + mv.i },
+      destino: { zona: 'funda', fi: mv.fi }
+    };
+  }
+  if (mv.tipo === 'ft') {
+    return { origen: { zona: 'funda', fi: mv.fi }, destino: { zona: 'tablero', col: mv.dest } };
+  }
+
+  const topeDescarte = descarte[descarte.length - 1];
+  if (!topeDescarte || idDe(topeDescarte) !== mv.id) return null;
+  return {
+    origen: { zona: 'descarte' },
+    destino: mv.tipo === 'sf' ? { zona: 'funda', fi: mv.fi } : { zona: 'tablero', col: mv.dest }
+  };
+}
+
+function elementosDeOrigen(origen) {
+  if (origen.zona === 'descarte') return $$('#descarte .card');
+  if (origen.zona === 'funda') return $$(`.funda[data-fi="${origen.fi}"] .card`);
+  return $$('.cwrap', q(`.col[data-col="${origen.col}"]`) || document)
+    .filter(wrap => Number(wrap.dataset.idx) >= origen.idx)
+    .map(wrap => wrap.querySelector('.card'))
+    .filter(Boolean);
+}
+
+function elementoDeDestino(destino) {
+  if (destino.zona === 'funda') return q(`.funda[data-fi="${destino.fi}"]`);
+  return q(`.col[data-col="${destino.col}"]`);
+}
+
+function señalarJugada(ui) {
+  elementosDeOrigen(ui.origen).forEach(el => el.classList.add('pista-origen'));
+
+  pistaTimers.push(window.setTimeout(() => {
+    const destinoEl = elementoDeDestino(ui.destino);
+    if (destinoEl) destinoEl.classList.add('pista-destino');
+  }, 750));
+
+  pistaTimers.push(window.setTimeout(limpiarPista, 3400));
+}
+
+function mostrarPista() {
+  if (bloqueado()) return;
+
+  limpiarPista();
+  limpiarSeleccion();
+  renderizar();
+
+  const analisis = analizar();
+
+  if (analisis.estado === 'bloqueada') {
+    mostrarBloqueo();
+    return;
+  }
+
+  if (analisis.estado === 'mazo') {
+    pulsarMazo();
+    toast(MENSAJES.REVISA_MAZO);
+    return;
+  }
+
+  const ui = analisis.estado === 'progreso' ? jugadaAInterfaz(analisis.jugada) : null;
+  if (!ui) {
+    toast(MENSAJES.SIN_PISTA);
+    return;
+  }
+
+  señalarJugada(ui);
+}
+
+// ═══════════════════════════════════════════════════════
+// AUTOCOMPLETAR
+// ═══════════════════════════════════════════════════════
+
+// Siguiente carta que puede subir a una fundación (siempre la más grave: forma una escala).
+function siguienteAuto(est) {
+  let mejor = null;
+
+  const considerar = (carta, origen) => {
+    const fi = elegirFundaDe(est.fundas, carta);
+    if (fi < 0) return;
+    if (
+      !mejor ||
+      carta.n < mejor.carta.n ||
+      (carta.n === mejor.carta.n && carta.p < mejor.carta.p)
+    ) {
+      mejor = { carta, origen, fi };
+    }
+  };
+
+  est.tablero.forEach((pila, col) => {
+    const carta = pila[pila.length - 1];
+    if (carta?.up) considerar(carta, { zona: 'tablero', col });
+  });
+  est.descarte.forEach((carta, pos) => considerar(carta, { zona: 'descarte', pos }));
+  est.mazo.forEach((carta, pos) => considerar(carta, { zona: 'mazo', pos }));
+
+  return mejor;
+}
+
+function aplicarPasoAuto(est, paso) {
+  const { origen, carta, fi } = paso;
+  if (origen.zona === 'tablero') est.tablero[origen.col].pop();
+  else if (origen.zona === 'descarte') est.descarte.splice(origen.pos, 1);
+  else est.mazo.splice(origen.pos, 1);
+  est.fundas[fi].push(carta);
+}
+
+function puedeAutocompletar() {
+  if (partidaGanada || partidaPerdida || autoEnCurso) return false;
+  if (tablero.some(pila => pila.some(carta => !carta.up))) return false;
+  if (fundas.every(f => f.length === 13)) return false;
+
+  const est = {
+    tablero: tablero.map(pila => pila.slice()),
+    descarte: descarte.slice(),
+    mazo: mazo.slice(),
+    fundas: fundas.map(f => f.slice())
+  };
+
+  let paso = siguienteAuto(est);
+  while (paso) {
+    aplicarPasoAuto(est, paso);
+    paso = siguienteAuto(est);
+  }
+
+  return est.fundas.every(f => f.length === 13);
+}
+
+function detenerAutocompletar() {
+  autoEnCurso = false;
+  if (autoTimer) {
+    window.clearTimeout(autoTimer);
+    autoTimer = null;
+  }
+}
+
+function ejecutarPasoAuto() {
+  const paso = siguienteAuto({ tablero, descarte, mazo, fundas });
+  if (!paso) return false;
+
+  registrarMovimiento();
+  aplicarPasoAuto({ tablero, descarte, mazo, fundas }, paso);
+  tocarCartaSubidaAFunda(paso.carta, paso.fi);
+  sumarPuntos(PUNTAJES.MOVER_FUNDA);
+  versionEstado += 1;
+  renderizar();
+  return true;
+}
+
+function iniciarAutocompletar() {
+  if (!puedeAutocompletar()) return;
+
+  limpiarSeleccion();
+  limpiarPista();
+  window.clearTimeout(ayudaMazoTimer);
+  historial = [];
+  autoEnCurso = true;
+  registrarInicioPartida();
+  actualizarControles();
+
+  const pendientes = 52 - fundas.reduce((suma, f) => suma + f.length, 0);
+  const intervalo = pendientes > 30 ? 85 : 115;
+
+  const paso = () => {
+    autoTimer = null;
+    if (!autoEnCurso) return;
+
+    const hecho = ejecutarPasoAuto();
+    const completo = fundas.every(f => f.length === 13);
+
+    if (!hecho || completo) {
+      autoEnCurso = false;
+      despuesDeJugada();
+      return;
+    }
+
+    autoTimer = window.setTimeout(paso, intervalo);
+  };
+
+  paso();
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════
 
 function slotHTML(icono = '') {
   return `
@@ -1175,7 +2066,7 @@ function faceHTML(carta, isSel = false, isDraggable = false) {
   const dragClass = isDraggable ? ' is-draggable' : '';
 
   return `
-    <div class="card face ${palo.tipo}${selClass}${dragClass}" aria-label="${nota} ${palo.nombre}">
+    <div class="card face ${palo.tipo}${selClass}${dragClass}" data-k="${claveCarta(carta)}" aria-label="${nota} ${palo.nombre}">
       <div class="c-tl">
         <b>${nota}</b>
         <span>${palo.sym}</span>
@@ -1298,6 +2189,57 @@ function limpiarDestinosDeArrastre() {
   $$('.drop-target').forEach(el => el.classList.remove('drop-target'));
 }
 
+// Resalta (muy sutilmente) a dónde puede ir la carta seleccionada o arrastrada.
+function marcarDestinosValidos() {
+  $$('.dest-ok').forEach(el => el.classList.remove('dest-ok'));
+
+  if (!getCurrentMode().destinos) return;
+  const origen = origenActivo();
+  const cartas = origen ? cartasDeOrigen(origen) : null;
+  if (!cartas?.length) return;
+
+  for (let col = 0; col < tablero.length; col += 1) {
+    if (origen.zona === 'tablero' && origen.col === col) continue;
+    if (puedeEnTablero(cartas[0], col)) q(`.col[data-col="${col}"]`)?.classList.add('dest-ok');
+  }
+
+  if (cartas.length === 1) {
+    const fi = elegirFunda(cartas[0]);
+    if (fi >= 0 && !(origen.zona === 'funda' && origen.fi === fi)) {
+      q(`.funda[data-fi="${fi}"]`)?.classList.add('dest-ok');
+    }
+  }
+}
+
+function aplicarFx() {
+  const app = getEl('app');
+  if (!app) return;
+
+  const aplicar = (conjunto, clase) => {
+    if (!conjunto.size) return;
+    $$('.card[data-k]', app).forEach(el => {
+      if (conjunto.has(el.dataset.k)) el.classList.add(clase);
+    });
+    conjunto.clear();
+  };
+
+  aplicar(fx.colocadas, 'fx-place');
+  aplicar(fx.volteadas, 'fx-flip');
+  aplicar(fx.sacudir, 'fx-shake');
+}
+
+function actualizarControles() {
+  const deshacerBtn = getEl('deshacer-btn');
+  const pistaBtn = getEl('pista-btn');
+  const autoBtn = getEl('auto-btn');
+
+  if (deshacerBtn) deshacerBtn.disabled = historial.length === 0 || partidaGanada || autoEnCurso;
+  const modalDeshacerBtn = getEl('game-over-undo-btn');
+  if (modalDeshacerBtn) modalDeshacerBtn.disabled = historial.length === 0;
+  if (pistaBtn) pistaBtn.disabled = partidaGanada || partidaPerdida || autoEnCurso;
+  if (autoBtn) autoBtn.hidden = !puedeAutocompletar();
+}
+
 function renderizar() {
   actualizarHud();
   renderMazo();
@@ -1305,7 +2247,14 @@ function renderizar() {
   renderFundas();
   renderTablero();
   limpiarDestinosDeArrastre();
+  marcarDestinosValidos();
+  aplicarFx();
+  actualizarControles();
 }
+
+// ═══════════════════════════════════════════════════════
+// ARRASTRE
+// ═══════════════════════════════════════════════════════
 
 function getDraggableOriginFromTarget(target) {
   const discardCard = target.closest('#descarte .card.face');
@@ -1328,7 +2277,15 @@ function getDraggableOriginFromTarget(target) {
   return { zona: 'tablero', col, idx };
 }
 
-function crearGhostArrastre(cartas, pointerX, pointerY) {
+function eliminarGhostsHuerfanos() {
+  window.clearTimeout(ghostTimer);
+  ghostTimer = null;
+  $$('#drag-layer').forEach(layer => layer.remove());
+}
+
+function crearGhostArrastre(cartas) {
+  eliminarGhostsHuerfanos();
+
   const layer = document.createElement('div');
   layer.id = 'drag-layer';
 
@@ -1363,12 +2320,6 @@ function crearGhostArrastre(cartas, pointerX, pointerY) {
 function moverGhost(pointerX, pointerY) {
   if (!dragState?.ghost) return;
   dragState.ghost.style.transform = `translate(${pointerX - dragState.ghostOffsetX}px, ${pointerY - dragState.ghostOffsetY}px)`;
-}
-
-function limpiarGhost() {
-  if (dragState?.layer && dragState.layer.parentNode) {
-    dragState.layer.parentNode.removeChild(dragState.layer);
-  }
 }
 
 function setDropTarget(target) {
@@ -1407,7 +2358,7 @@ function iniciarArrastre(origin, event) {
   const cartas = cartasDeOrigen(origin);
   if (!cartas?.length) return;
 
-  const ghostData = crearGhostArrastre(cartas, event.clientX, event.clientY);
+  const ghostData = crearGhostArrastre(cartas);
 
   dragState = {
     origin,
@@ -1426,15 +2377,43 @@ function iniciarArrastre(origin, event) {
   renderizar();
 }
 
-function cancelarArrastre() {
-  limpiarGhost();
+// conservarGhost: deja el ghost en pantalla para animar su regreso.
+function cancelarArrastre({ conservarGhost = false } = {}) {
+  if (!conservarGhost) eliminarGhostsHuerfanos();
   limpiarDestinosDeArrastre();
   document.body.classList.remove('is-dragging');
   dragState = null;
+
+  if (layoutPendiente) {
+    layoutPendiente = false;
+    programarRecalculoLayout();
+  }
+}
+
+// El ghost vuelve suavemente a la posición original de la carta.
+function devolverGhost(ghostInfo, origen) {
+  const primera = elementosDeOrigen(origen)[0];
+  if (!ghostInfo?.layer || !ghostInfo.ghost) return;
+
+  if (!primera) {
+    ghostInfo.layer.remove();
+    return;
+  }
+
+  const rect = primera.getBoundingClientRect();
+  ghostInfo.ghost.style.transition = 'transform 0.18s ease-out, opacity 0.18s ease-out';
+  ghostInfo.ghost.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
+  ghostInfo.ghost.style.opacity = '0.55';
+
+  ghostTimer = window.setTimeout(() => {
+    ghostTimer = null;
+    ghostInfo.layer.remove();
+  }, 200);
 }
 
 function onPointerDownGlobal(event) {
-  if (partidaPerdida || partidaGanada) return;
+  limpiarPista();
+  if (bloqueado()) return;
   if (event.button !== 0 && event.pointerType !== 'touch') return;
 
   const origin = getDraggableOriginFromTarget(event.target);
@@ -1472,8 +2451,12 @@ function onPointerMoveGlobal(event) {
 
 function resolverMovimientoArrastre(origin, target) {
   if (!target) return false;
-  if (target.zona === 'tablero') return moverDesdeOrigenATablero(origin, target.col, { silencioso: true });
-  if (target.zona === 'funda') return moverDesdeOrigenAFunda(origin, target.fi, { silencioso: true });
+  if (target.zona === 'tablero') {
+    return moverDesdeOrigenATablero(origin, target.col, { silencioso: true, sacudir: true });
+  }
+  if (target.zona === 'funda') {
+    return moverDesdeOrigenAFunda(origin, target.fi, { silencioso: true, sacudir: true });
+  }
   return false;
 }
 
@@ -1483,18 +2466,27 @@ function onPointerUpGlobal(event) {
   const wasDragging = dragState.dragging;
   const origin = dragState.origin;
 
-  if (wasDragging) {
-    const target = resolverDestinoDesdePunto(event.clientX, event.clientY);
-    const moved = resolverMovimientoArrastre(origin, target);
-    dragClickSuppressUntil = Date.now() + 250;
-    cancelarArrastre();
-    limpiarSeleccion();
-    renderizar();
-    if (!moved && target) toast(MENSAJES.MOV_INVALIDO);
+  if (!wasDragging) {
+    dragState = null;
     return;
   }
 
-  dragState = null;
+  const ghostInfo = { layer: dragState.layer, ghost: dragState.ghost };
+  const target = resolverDestinoDesdePunto(event.clientX, event.clientY);
+
+  dragClickSuppressUntil = Date.now() + 250;
+  ultimoToque = null;
+  cancelarArrastre({ conservarGhost: true });
+  limpiarSeleccion();
+
+  if (resolverMovimientoArrastre(origin, target)) {
+    ghostInfo.layer.remove();
+    return;
+  }
+
+  // Movimiento no válido: la carta se sacude y vuelve a su sitio.
+  renderizar();
+  devolverGhost(ghostInfo, origin);
 }
 
 function onPointerCancelGlobal(event) {
@@ -1511,17 +2503,14 @@ function onKeyActivate(event, callback) {
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// EVENTOS
+// ═══════════════════════════════════════════════════════
+
 function initEventos() {
   const mazoEl = getEl('mazo');
   const descarteEl = getEl('descarte');
   const tableroArea = getEl('tablero-area');
-  const nuevaBtn = getEl('nueva-btn');
-  const playAgainBtn = getEl('play-again-btn');
-  const gameOverAgainBtn = getEl('game-over-again-btn');
-  const resetStatsBtn = getEl('reset-stats-btn');
-  const reciclarBtn = getEl('reciclar-btn');
-  const ayudaBtn = getEl('ayuda-btn');
-  const reglasBtn = getEl('reglas-btn');
   const modoPill = getEl('modo-pill');
 
   document.addEventListener('pointerdown', desbloquearAudio, { passive: true });
@@ -1564,14 +2553,26 @@ function initEventos() {
     event.stopPropagation();
   }, true);
 
-  nuevaBtn?.addEventListener('click', nuevaPartida);
-  playAgainBtn?.addEventListener('click', nuevaPartida);
-  gameOverAgainBtn?.addEventListener('click', nuevaPartida);
-  reciclarBtn?.addEventListener('click', onClickMazo);
-  ayudaBtn?.addEventListener('click', () => toast(MENSAJES.AYUDA));
-  reglasBtn?.addEventListener('click', abrirIntro);
+  // Si la ventana pierde el foco a mitad de un arrastre, se cancela limpiamente.
+  window.addEventListener('blur', () => {
+    if (!dragState) return;
+    cancelarArrastre();
+    renderizar();
+  });
 
-  resetStatsBtn?.addEventListener('click', () => {
+  getEl('nueva-btn')?.addEventListener('click', nuevaPartida);
+  getEl('play-again-btn')?.addEventListener('click', nuevaPartida);
+  getEl('game-over-again-btn')?.addEventListener('click', nuevaPartida);
+  getEl('game-over-restart-btn')?.addEventListener('click', () => reiniciarPartida(true));
+  getEl('game-over-undo-btn')?.addEventListener('click', deshacer);
+  getEl('reiniciar-btn')?.addEventListener('click', () => reiniciarPartida(false));
+  getEl('deshacer-btn')?.addEventListener('click', deshacer);
+  getEl('pista-btn')?.addEventListener('click', mostrarPista);
+  getEl('auto-btn')?.addEventListener('click', iniciarAutocompletar);
+  getEl('reciclar-btn')?.addEventListener('click', onClickMazo);
+  getEl('ayuda-btn')?.addEventListener('click', () => toast(MENSAJES.AYUDA));
+
+  getEl('reset-stats-btn')?.addEventListener('click', () => {
     const confirmado = window.confirm(
       '¿Borrar el historial de puntajes y estadísticas guardado en este dispositivo?'
     );
@@ -1580,7 +2581,23 @@ function initEventos() {
     resetearEstadisticas();
   });
 
+  document.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      deshacer();
+    }
+  });
+
+  // Guarda el récord si se cierra la pestaña a mitad de partida.
+  window.addEventListener('pagehide', confirmarRecord);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') confirmarRecord();
+  });
+
   const cambiarModo = () => {
+    const enCurso = partidaRegistrada && !partidaGanada && !partidaPerdida && movimientos >= 5;
+    if (enCurso && !window.confirm(MENSAJES.CONFIRMAR_MODO)) return;
+
     const idx = GAME_MODES.findIndex(mode => mode.id === currentModeId);
     const next = GAME_MODES[(idx + 1) % GAME_MODES.length];
     currentModeId = next.id;
@@ -1667,6 +2684,7 @@ function initIntro() {
 window.addEventListener('load', () => {
   asegurarToast();
   calcDims();
+  firmaLayout = calcularFirmaLayout();
   initEventos();
   initLayoutObservers();
   initIntro();

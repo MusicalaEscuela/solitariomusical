@@ -63,6 +63,23 @@ body.is-dragging {
   -webkit-user-select: none;
 }
 
+/* Sin zoom por doble toque ni selección de texto en el área de juego. */
+html,
+body,
+button,
+.zone,
+.col {
+  touch-action: manipulation;
+}
+
+.table-shell,
+.action-bar,
+.action-bar-secondary {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 img {
   display: block;
   max-width: 100%;
@@ -198,6 +215,23 @@ h1 {
   font-size: clamp(18px, 1.4vw, 24px);
   color: #fff;
   line-height: 1;
+}
+
+.hud-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.hud-value-row .hud-value {
+  margin-bottom: 0;
+}
+
+.hud-pct {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
 }
 
 .hud-hint {
@@ -565,6 +599,64 @@ body.is-dragging .col {
   width: 100%;
 }
 
+.action-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+  transform: none;
+}
+
+.action-item[hidden] {
+  display: none;
+}
+
+.action-item-auto {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, rgba(143, 224, 174, 0.28), rgba(240, 194, 92, 0.3));
+  border-color: rgba(255, 221, 141, 0.6);
+  animation: autoGlow 2.4s ease-in-out infinite;
+}
+
+@keyframes autoGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 221, 141, 0); }
+  50% { box-shadow: 0 0 18px 2px rgba(255, 221, 141, 0.28); }
+}
+
+.action-bar-secondary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.action-item-quiet {
+  min-height: 44px;
+  font-weight: 400;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-soft);
+}
+
+.action-item-light {
+  min-height: 48px;
+  color: #155f39;
+  background: rgba(34, 109, 70, 0.1);
+  border-color: rgba(34, 109, 70, 0.28);
+}
+
+.action-item-light:hover {
+  background: rgba(34, 109, 70, 0.18);
+}
+
+.action-item-quiet-light {
+  min-height: 44px;
+  font-weight: 400;
+  color: rgba(42, 36, 27, 0.7);
+  background: transparent;
+  border-color: rgba(42, 36, 27, 0.14);
+}
+
+.action-item-quiet-light:hover {
+  background: rgba(42, 36, 27, 0.06);
+}
+
 #toast {
   position: fixed;
   left: 50%;
@@ -844,6 +936,8 @@ body.is-dragging .col {
 
 #game-over-panel {
   width: min(100%, 420px);
+  max-height: 94dvh;
+  overflow-y: auto;
   padding: 24px 22px;
   border-radius: 28px;
   background: linear-gradient(180deg, rgba(250, 248, 244, 0.98), rgba(239, 233, 223, 0.98));
@@ -916,6 +1010,11 @@ body.is-dragging .col {
   color: #155f39;
 }
 
+.game-over-actions {
+  display: grid;
+  gap: 8px;
+}
+
 .no-js {
   margin: 16px auto;
   padding: 12px;
@@ -961,7 +1060,23 @@ body.is-dragging .col {
   }
 
   .action-bar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    position: sticky;
+    bottom: max(6px, env(safe-area-inset-bottom));
+    z-index: 30;
+    gap: 6px;
+    padding: 8px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  .action-item {
+    min-height: 48px;
+    padding: 8px 6px;
+    border-radius: 14px;
+  }
+
+  .action-bar-secondary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .table-shell {
@@ -1073,9 +1188,12 @@ body.is-dragging .col {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .action-bar,
   .win-stats {
     grid-template-columns: 1fr;
+  }
+
+  .action-item {
+    font-size: 10px;
   }
 
   .win-scale-foundations {
@@ -1674,5 +1792,115 @@ body.is-dragging .col {
   .intro-note {
     padding: 4px 7px;
     font-size: 10px;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   v2.1 · MICROANIMACIONES, PISTAS Y DESTINOS VÁLIDOS
+═══════════════════════════════════════════════════════ */
+
+.card.fx-place {
+  animation: cardPlace 0.22s ease-out;
+}
+
+@keyframes cardPlace {
+  0% { transform: scale(1); }
+  45% {
+    transform: scale(1.06);
+    box-shadow:
+      0 0 0 2px rgba(255, 221, 141, 0.85),
+      0 10px 22px rgba(240, 194, 92, 0.3);
+  }
+  100% { transform: scale(1); }
+}
+
+.card.fx-flip {
+  animation: cardFlip 0.26s ease-out;
+}
+
+@keyframes cardFlip {
+  from { transform: perspective(520px) rotateY(88deg); }
+  to { transform: perspective(520px) rotateY(0deg); }
+}
+
+.card.fx-shake {
+  animation: cardShake 0.3s ease-in-out;
+}
+
+@keyframes cardShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+/* Pista: primero la carta, luego el destino. */
+.card.pista-origen {
+  animation: pistaOrigen 0.95s ease-in-out 2;
+}
+
+@keyframes pistaOrigen {
+  0%, 100% {
+    transform: translateY(0);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+  }
+  50% {
+    transform: translateY(-3px) scale(1.03);
+    box-shadow:
+      0 0 0 3px rgba(255, 221, 141, 0.95),
+      0 0 22px rgba(255, 221, 141, 0.5);
+  }
+}
+
+.col.pista-destino .slot-ph,
+.col.pista-destino .cwrap:last-child .card,
+.funda.pista-destino .slot-ph,
+.funda.pista-destino .card,
+#mazo.pista-destino .slot-ph,
+#mazo.pista-destino .card {
+  animation: pistaDestino 1.1s ease-in-out 2;
+}
+
+@keyframes pistaDestino {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(143, 224, 174, 0); }
+  50% {
+    box-shadow:
+      0 0 0 3px rgba(143, 224, 174, 0.9),
+      0 0 22px rgba(143, 224, 174, 0.5);
+  }
+}
+
+/* Destinos válidos: muy sutiles en Clásico, un poco más claros en Amable, ausentes en Experto. */
+body.dest-sutil .col.dest-ok .slot-ph,
+body.dest-sutil .col.dest-ok .cwrap:last-child .card,
+body.dest-sutil .funda.dest-ok .slot-ph,
+body.dest-sutil .funda.dest-ok .card {
+  box-shadow: 0 0 0 2px rgba(143, 224, 174, 0.28);
+}
+
+body.dest-visible .col.dest-ok .slot-ph,
+body.dest-visible .col.dest-ok .cwrap:last-child .card,
+body.dest-visible .funda.dest-ok .slot-ph,
+body.dest-visible .funda.dest-ok .card {
+  box-shadow:
+    0 0 0 2px rgba(143, 224, 174, 0.55),
+    0 0 14px rgba(143, 224, 174, 0.22);
+}
+
+/* El destino bajo el dedo/cursor sigue siendo el más marcado. */
+.col.drop-target .slot-ph,
+.col.drop-target .cwrap:last-child .card,
+.funda.drop-target .slot-ph,
+.funda.drop-target .card {
+  box-shadow:
+    0 0 0 3px rgba(143, 224, 174, 0.95),
+    0 0 0 8px rgba(143, 224, 174, 0.12);
+}
+
+@media (max-width: 720px) {
+  #app {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
 }
